@@ -259,16 +259,23 @@ class MainWindow(QMainWindow):
         return page
     def experiments_page(self):
         outer=QScrollArea();outer.setWidgetResizable(True);content=QWidget();l=QVBoxLayout(content);l.setContentsMargins(0,0,0,0);l.setSpacing(15);outer.setWidget(content)
+        def parameter_row(*fields):
+            layout=QHBoxLayout();layout.setContentsMargins(0,0,0,0);layout.setSpacing(18)
+            for title,control in fields:
+                field=QHBoxLayout();field.setContentsMargins(0,0,0,0);field.setSpacing(9)
+                caption=label(title,'Muted');caption.setBuddy(control)
+                field.addWidget(caption);field.addWidget(control,1);layout.addLayout(field,1)
+            return layout
         config,cc,ch=panel('Параметры эксперимента');form=QHBoxLayout();form.setSpacing(15)
         self.project_name=QLineEdit();self.project_name.setMaxLength(100);self.duration=spin(60,10,600,0,'s');self.seed=spin(42,0,2147483647);self.window_size=spin(5,1,30,0,'s')
         for title,w in [('Название проекта',self.project_name),('Длительность',self.duration),('Seed',self.seed),('Окно признаков',self.window_size)]:
-            v=QVBoxLayout();v.addWidget(label(title,'Muted'));v.addWidget(w);form.addLayout(v,2 if w is self.project_name else 1)
+            v=QVBoxLayout();v.setSpacing(6);caption=label(title,'Muted');caption.setBuddy(w);v.addWidget(caption);v.addWidget(w);form.addLayout(v,2 if w is self.project_name else 1)
         cc.addLayout(form);ch.addWidget(self.action_button('Применить',self.apply_experiment,'settings'));l.addWidget(config)
         self.engine_combo=combo([('procedures','Процедуры · v2'),('messages','Отдельные сообщения · v1')]);self.routing_combo=combo([('shortest','Предпочтительный маршрут'),('loadshare','Распределение по абонентам')]);self.label_combo=combo([('affected','Воздействие на трафик'),('scheduled','Запланированное событие'),('degradation','Наблюдаемое ухудшение')]);self.trace_limit=spin(1500,100,20000)
-        cc.addLayout(row(label('Движок','Muted'),self.engine_combo,label('Маршрутизация','Muted'),self.routing_combo))
+        cc.addLayout(parameter_row(('Движок',self.engine_combo),('Маршрутизация',self.routing_combo)))
         self.control_plane_check=QCheckBox('Установление ассоциаций и heartbeat');self.knowledge_combo=combo([('distributed','Отдельное представление у каждого узла'),('shared','Общее знание · сравнение со старой моделью')]);self.route_refresh=spin(5000,100,60000,0,'ms')
         cc.addLayout(row(self.control_plane_check,self.knowledge_combo));cc.addLayout(row(label('Обновление представлений','Muted'),self.route_refresh,stretch=True))
-        cc.addLayout(row(label('Метка ML','Muted'),self.label_combo,label('Выборка трасс','Muted'),self.trace_limit))
+        cc.addLayout(parameter_row(('Метка ML',self.label_combo),('Выборка трасс',self.trace_limit)))
         self.degradation_threshold=spin(200,1,60000,1,'ms');cc.addLayout(row(label('Порог p95 для метки ухудшения','Muted'),self.degradation_threshold,stretch=True))
         flows,fc,fh=panel('Сигнальные потоки','В режиме v2 интенсивность задаёт новые процедуры. Ответы, этапы регистрации и повторы создают дополнительную нагрузку.')
         for text,fn,ico in [('Добавить',lambda:self.edit_flow(False),'plus'),('Изменить',lambda:self.edit_flow(True),'settings'),('Удалить',self.delete_flow,'trash')]:fh.addWidget(self.action_button(text,fn,ico))
@@ -725,7 +732,7 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF5 — запустить эксперимент\nEscape — отменить создание канала / запросить отмену вычисления\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.4.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.4.1','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return
