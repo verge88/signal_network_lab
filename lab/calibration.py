@@ -1,0 +1,80 @@
+"""Reproducible offline calibration against independent measured experiments."""
+import csv
+import io
+import math
+import json
+from copy import deepcopy
+import numpy as np
+from .schema import Project
+from .simulator import simulate
+
+METRICS = ('delivery_ratio','latency_mean','latency_p95','latency_p99','throughput','retry_ratio','recovery_ms')
+TEMPLATE = 'run_id,offered_rate,delivery_ratio,latency_mean,latency_p95,latency_p99,throughput,retry_ratio,recovery_ms,latency_samples_ms,scenario,incidents_json\n'
+
+
+def observations(text):
+    if len(text.encode('utf-8'))>5_000_000: raise ValueError('Лимит измерений: 5 МБ')
+    reader=csv.DictReader(io.StringIO(text.lstrip('\ufeff')))
+    if not {'run_id','offered_rate'}.issubset(reader.fieldnames or []): raise ValueError('CSV должен содержать run_id и offered_rate')
+    rows=[]
+    for i,r in enumerate(reader):
+        if i>=24: raise ValueError('Лимит калибровки: 24 опыта')
+        try:
+            row=dict(run_id=r['run_id'].strip(),offered_rate=float(r['offered_rate']))
+            if not row['run_id'] or len(row['run_id'])>100 or not 0<row['offered_rate']<=3000: raise ValueError()
+            for key in METRICS:
+                if r.get(key,'').strip():
+                    value=float(r[key])
+                    if not math.isfinite(value) or value<0 or (key=='delivery_ratio' and value>1): raise ValueError()
+                    row[key]=value
+            if not any(k in row for k in METRICS): raise ValueError()
+            if r.get('latency_samples_ms','').strip():
+                samples=[float(x) for x in r['latency_samples_ms'].split('|')]
+                if len(samples)<20 or len(samples)>20000 or not all(math.isfinite(x) and x>=0 for x in samples): raise ValueError()
+                row['latency_samples_ms']=samples
+            if r.get('scenario','').strip():row['scenario']=r['scenario'].strip()[:100]
+            if r.get('incidents_json','').strip():
+                from .schema import Incident
+                incidents=json.loads(r['incidents_json'])
+                if not isinstance(incidents,list) or len(incidents)>30:raise ValueError()
+                row['incidents']=[Incident.model_validate(incident).model_dump() for incident in incidents]
+            rows.append(row)
+        except (ValueError,KeyError,AttributeError): raise ValueError(f'Некорректный опыт в строке {i+2}')
+    if len({r['run_id'] for r in rows})<4: raise ValueError('Нужно минимум четыре независимых run_id')
+    return rows
+
+
+def transformed(project, scales):
+    d=project.model_dump()
+    for n in d['nodes']:
+        n['processing_ms']=min(1000,n['processing_ms']*scales['processing'])
+        n['database_ms']=min(1000,n['database_ms']*scales['processing'])
+        n['recovery_ms']=min(30000,n['recovery_ms']*scales['recovery'])
+    for l in d['links']:
+        l['latency_ms']=min(5000,l['latency_ms']*scales['latency'])
+        if l['reverse_latency_ms'] is not None:l['reverse_latency_ms']=min(5000,l['reverse_latency_ms']*scales['latency'])
+        l['loss']=min(1,l['loss']*scales['loss'])
+        if l['reverse_loss'] is not None:l['reverse_loss']=min(1,l['reverse_loss']*scales['loss'])
+        l['recovery_ms']=min(30000,l['recovery_ms']*scales['recovery'])
+    for e in d['incidents']:
+        if e['recovery_ms'] is not None:e['recovery_ms']=min(30000,e['recovery_ms']*scales['recovery'])
+    return Project.model_validate(d)
+
+
+def measure(result):
+    s=result['summary']
+    recovery=[e['first_success_after_end']*1000 for e in result.get('incidents',[]) if e.get('first_success_after_end') is not None]
+    return dict(**{k:s[k] for k in METRICS[:5]},retry_ratio=s.get('transport_retries',0)/max(1,sum(x['packets']-x['acks'] for x in result['links'].values())),recovery_ms=float(np.mean(recovery)) if recovery else None)
+
+
+def sample_distance(observed, simulated):
+    if not simulated:return dict(ks=None,wasserstein_ms=None,observed_n=len(observed),simulated_n=0)
+    a,b=np.sort(observed),np.sort(simulated); support=np.unique(np.r_[a,b])
+    ks=float(np.max(np.abs(np.searchsorted(a,support,side='right')/len(a)-np.searchsorted(b,support,side='right')/len(b))))
+    points=np.linspace(0,1,1001)
+    return dict(ks=ks,wasserstein_ms=float(np.trapezoid(np.abs(np.quantile(a,points)-np.quantile(b,points)),points)),observed_n=len(a),simulated_n=len(b))
+
+
+def calibrate(project, text, progress=None, cancel=None, options=None):
+    from .calibration_search import calibrate as search
+    return search(project,text,progress,cancel,options)

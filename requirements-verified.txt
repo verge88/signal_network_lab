@@ -1,0 +1,8 @@
+# Exact direct dependency versions used for the verified local build.
+# For a complete environment snapshot, also record pip freeze with your experiment.
+fastapi==0.135.3
+uvicorn==0.44.0
+numpy==2.3.5
+scikit-learn==1.8.0
+joblib==1.5.3
+pydantic==2.12.5
