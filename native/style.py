@@ -113,6 +113,8 @@ def icon(kind, color='#9cacc1', size=22):
         'arrow':[(5,12),(19,12),(14,7),(19,12),(14,17)],
         'sidebar-collapse':[(15,5),(8,12),(15,19)],
         'sidebar-expand':[(9,5),(16,12),(9,19)],
+        'restore':[(9,9),(9,3),(21,3),(21,15),(15,15)],
+        'close':[(5,5),(19,19)],
     }
     if kind in paths:
         points=paths[kind]
@@ -120,6 +122,8 @@ def icon(kind, color='#9cacc1', size=22):
         for point in points[1:]:path.lineTo(*point)
         p.drawPath(path)
         if kind=='plus':p.drawLine(12,5,12,19)
+        if kind=='restore':p.drawRect(3,9,12,12)
+        if kind=='close':p.drawLine(19,5,5,19)
         if kind=='chart':p.drawPolyline([__import__('PySide6.QtCore',fromlist=['QPointF']).QPointF(x,y) for x,y in [(7,17),(12,11),(16,13),(21,5)]])
         if kind=='download':p.drawLine(3,18,3,21);p.drawLine(3,21,21,21);p.drawLine(21,21,21,18)
         if kind=='fit':
@@ -131,6 +135,8 @@ def icon(kind, color='#9cacc1', size=22):
     elif kind=='topology':
         for x,y in [(3,3),(15,3),(15,15)]:p.drawRoundedRect(QRectF(x,y,6,6),1.5,1.5)
         p.drawLine(9,6,15,6);p.drawLine(6,9,6,18);p.drawLine(6,18,15,18)
+    elif kind=='connect':
+        p.drawEllipse(QRectF(2,8,6,6));p.drawEllipse(QRectF(16,8,6,6));p.drawLine(8,11,16,11)
     elif kind=='brain':
         p.drawRoundedRect(QRectF(6,4,12,16),4,4)
         for y in (7,12,17):p.drawLine(3,y,6,y);p.drawLine(18,y,21,y)
@@ -150,6 +156,10 @@ QMainWindow, QDialog { background: #11151c; }
 QFrame#Sidebar { background: #151a23; border-right: 1px solid #28313e; }
 QFrame#Panel, QFrame#Metric { background: #191f29; border: 1px solid #2a3443; border-radius: 10px; }
 QFrame#Toolbar { background: #191f29; border: 1px solid #2a3443; border-radius: 8px; }
+QFrame#FloatingPanel { background: #191f29; border: 1px solid #536980; border-radius: 8px; }
+QPushButton#QuickNode { padding: 3px 4px; font-size: 11px; }
+QPushButton#FloatingTool { padding: 3px; }
+QPushButton#FloatingTool:checked { background: #263b38; border-color: #8fe0c2; }
 QLabel { background: transparent; }
 QLabel#Title { font-size: 25px; font-weight: 600; color: #f0f3fa; }
 QLabel#Subtitle, QLabel#Muted { color: #8c9bb0; }

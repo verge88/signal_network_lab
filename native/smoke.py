@@ -109,7 +109,11 @@ class SmokeTest(QObject):
     def start(self):
         try:
             w=self.window
+            import gc
+            assert not gc.isenabled() and self.app.gui_collector.collect()
+            self.completed.append('Python cyclic collection is scheduled on the GUI thread; automatic collection in simulation workers is disabled')
             self.verify_protocol_regressions()
+            self.verify_expanded_topology()
             self.verify_mouse_links()
             # Exercise native forms and all page construction paths.
             for factory in [lambda:node_editor(w),lambda:link_editor(w,w.project),lambda:flow_editor(w,w.project),lambda:incident_editor(w,w.project)]:
@@ -125,6 +129,68 @@ class SmokeTest(QObject):
             w.job_completed.connect(self.next_stage)
             w.start_run()
         except Exception as e:self.fail(e)
+    def verify_expanded_topology(self):
+        from lab.schema import NODE_KINDS
+        w=self.window;original=json.dumps(w.project,sort_keys=True);selection=w.selected;theme=w.theme;settings=w.settings;size=w.size()
+        w.settings=QSettings(str(storage.DATA/'expanded-self-test.ini'),QSettings.Format.IniFormat)
+        def drag(widget,delta):
+            start=QPoint(15,widget.height()//2);QTest.mousePress(widget,Qt.MouseButton.LeftButton,pos=start)
+            QTest.mouseMove(widget,start+delta);QTest.mouseRelease(widget,Qt.MouseButton.LeftButton,pos=start+delta);self.app.processEvents()
+        try:
+            for name in ('dark','monochrome','light_monochrome'):
+                w.apply_theme(name,persist=False);w.show_page(0);self.app.processEvents();sizes=w.topology_split.sizes()
+                w.expand_topology_button.click();self.app.processEvents();workspace=w.expanded_workspace
+                assert w.topology_expanded and not w.sidebar.isVisible() and not w.workspace_right.isVisible()
+                assert w.graph.isVisible() and w.graph.parentWidget() is workspace and workspace.geometry()==w.centralWidget().rect()
+                assert workspace.inspector_panel.isVisible() and workspace.inspector_button.isChecked()
+                inspector_hit=workspace.childAt(workspace.inspector_panel.geometry().center())
+                assert inspector_hit is workspace.inspector_panel or workspace.inspector_panel.isAncestorOf(inspector_hit),'The graph covers the floating inspector'
+                assert set(workspace.node_buttons)==set(NODE_KINDS)
+                workspace.fit_button.click();self.app.processEvents();self.capture(name+'-expanded-topology')
+                count=len(w.project['nodes'])
+                for kind in NODE_KINDS:
+                    workspace.node_buttons[kind].click();self.app.processEvents()
+                    assert self.app.activeModalWidget() is None
+                    assert w.project['nodes'][-1]['kind']==kind and len(w.project['nodes'])==count+1
+                    assert w.inspector_fields['kind'].currentData()==kind
+                    node=w.project['nodes'][-1];assert all(abs(other['x']-node['x'])>=180 or abs(other['y']-node['y'])>=115 for other in w.project['nodes'][:-1])
+                    w.undo.undo();assert json.dumps(w.project,sort_keys=True)==original
+                workspace.node_buttons['AMF'].click();w.inspector_fields['capacity'].setValue(1234);w.apply_inspector()
+                assert w.project['nodes'][-1]['capacity']==1234;w.undo.undo();w.undo.undo()
+                w.undo.redo();assert w.project['nodes'][-1]['kind']=='AMF';w.undo.undo()
+                tools_position=workspace.tools.pos();drag(workspace.tools.header,QPoint(65,35));assert workspace.tools.pos()!=tools_position
+                inspector_position=workspace.inspector_panel.pos();drag(workspace.inspector_panel.header,QPoint(-65,40));assert workspace.inspector_panel.pos()!=inspector_position
+                original_window_size=w.size();original_inspector_size=workspace.inspector_panel.size()
+                drag(workspace.inspector_grip,QPoint(30,-35));assert workspace.inspector_panel.size()!=original_inspector_size and w.size()==original_window_size
+                workspace.close_inspector.click();assert not workspace.inspector_panel.isVisible()
+                workspace.inspector_button.click();assert workspace.inspector_panel.isVisible()
+                workspace.connect_button.click();assert w.graph.connection_mode and w.draw_link_button.isChecked() and w.draw_link_action.isChecked()
+                QTest.keyClick(w.graph,Qt.Key.Key_Escape);assert w.topology_expanded and not w.graph.connection_mode and not workspace.connect_button.isChecked()
+                workspace.arrange_button.click();w.undo.undo();assert json.dumps(w.project,sort_keys=True)==original
+                for control in (workspace.link_button,workspace.export_button):
+                    answered=[]
+                    def dismiss():
+                        dialog=self.app.activeModalWidget();answered.append(dialog is not None)
+                        if dialog is not None:dialog.reject()
+                    QTimer.singleShot(30,dismiss);control.click();assert answered==[True]
+                self.capture(name+'-expanded-topology-moved')
+                w.resize(1080,700);self.app.processEvents()
+                assert workspace.geometry()==w.centralWidget().rect()
+                for floating in (workspace.tools,workspace.inspector_panel):assert workspace.rect().contains(floating.geometry())
+                self.capture(name+'-expanded-topology-small');w.resize(size);self.app.processEvents()
+                saved_position=workspace.tools.pos();workspace.exit_button.click();self.app.processEvents()
+                assert not w.topology_expanded and w.sidebar.isVisible() and w.workspace_right.isVisible()
+                assert w.topology_split.count()==2 and w.inspector.parentWidget() is w.topology_split and w.graph.parentWidget() is not workspace
+                assert abs(w.topology_split.sizes()[1]-sizes[1])<=2
+                w.activateWindow();w.graph.setFocus();self.app.processEvents()
+                QTest.keyClick(w.graph,Qt.Key.Key_F11);self.app.processEvents();assert w.topology_expanded,'F11 did not expand the topology'
+                assert workspace.tools.pos()==saved_position,'Floating panel position was not restored'
+                QTest.keyClick(w.graph,Qt.Key.Key_Escape);self.app.processEvents();assert not w.topology_expanded,'Escape did not restore the normal workspace'
+                w.set_topology_expanded(True);w.show_page(1);assert not w.topology_expanded and w.pages.currentIndex()==1
+            assert json.dumps(w.project,sort_keys=True)==original
+            self.completed.append('expanded topology: all 20 one-click node types, undo/redo, draggable tools and resizable inspector, native link/export dialogs, theme switching, small window bounds and complete layout restoration')
+        finally:
+            w.set_topology_expanded(False);w.resize(size);w.selected=selection;w.install_project(json.loads(original));w.undo.clear();w.show_page(0);w.settings=settings;w.apply_theme(theme,persist=False)
     def verify_mouse_links(self):
         w=self.window;original_theme=w.theme;before=json.dumps(w.project,sort_keys=True);count=len(w.project['links']);coordinates=[(n['x'],n['y']) for n in w.project['nodes']]
         def point(nid,port=False):return w.graph.mapFromScene(w.graph.node_items[nid].mapToScene(QPointF(78 if port else 0,4 if port else 0)))

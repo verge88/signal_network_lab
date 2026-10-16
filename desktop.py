@@ -35,7 +35,9 @@ def main():
         if (candidate/'desktop.py').is_file() and (candidate/'lab'/'schema.py').is_file():
             storage.migrate_workspace(candidate/'data')
     from native.window import MainWindow
-    app=QApplication(sys.argv[:1]);app.setApplicationName('Signal Lab Desktop');app.setApplicationVersion('2.4.1');app.setOrganizationName('SignalLab');app.setStyle('Fusion')
+    app=QApplication(sys.argv[:1]);app.setApplicationName('Signal Lab Desktop');app.setApplicationVersion('2.5.0');app.setOrganizationName('SignalLab');app.setStyle('Fusion')
+    from native.qt_gc import GuiGarbageCollector
+    app.gui_collector=GuiGarbageCollector(app)
     # The offscreen platform does not enumerate Windows fonts automatically.
     # Loading installed fonts also keeps native and test renders consistent.
     fonts=Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts'
@@ -60,6 +62,7 @@ def main():
         from native.smoke import SmokeTest
         test=SmokeTest(app,window,args.screenshots);QTimer.singleShot(50,test.start)
     result=app.exec()
+    window.thread_pool.waitForDone();app.gui_collector.stop()
     faulthandler.disable();crash_log.close()
     if args.smoke_test:temporary.cleanup()
     return result

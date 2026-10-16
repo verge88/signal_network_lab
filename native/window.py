@@ -11,7 +11,7 @@ from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QUndoCommand, QUn
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QFrame,QHBoxLayout,QVBoxLayout,QLabel,QPushButton,QStackedWidget,QSplitter,QScrollArea,QFormLayout,QLineEdit,QCheckBox,QComboBox,QDialog,QFileDialog,QMessageBox,QProgressBar,QSlider,QTabWidget,QAbstractItemView,QDialogButtonBox,QPlainTextEdit,QSizePolicy,QMenu)
 from lab import storage, research, ml
 from lab.presets import preset
-from lab.schema import Project, LINK_PROTOCOLS
+from lab.schema import Project, Node, NODE_KINDS, LINK_PROTOCOLS
 from .style import icon, THEMES, set_theme, saved_theme, themed_color, themed_stylesheet, stylesheet, application_palette
 from .widgets import label, button, row, panel, table, populate, spin, combo, Metric, Chart
 from .graph import NetworkView
@@ -52,6 +52,7 @@ class MainWindow(QMainWindow):
         self.theme=saved_theme(self.settings);set_theme(self.theme)
         self.project=preset().model_dump();self.run_record=None;self.dataset_record=None;self.model_record=None;self.sweep_record=None;self.calibration_record=None
         self.selected=('node','stp-a');self.path=None;self.active_job=None;self.started=0;self.compute_buttons=[];self.records={};self.loaded_runs=[];self.model_metrics=None
+        self.topology_expanded=False;self.expanded_workspace=None
         self.display_model_id=None;self.current_threshold=None
         self.thread_pool=QThreadPool(self);self.thread_pool.setMaxThreadCount(1)
         self.undo=QUndoStack(self);self.undo.cleanChanged.connect(lambda clean:self.setWindowModified(not clean))
@@ -103,9 +104,9 @@ class MainWindow(QMainWindow):
         for text,fn,ico in [('Открыть проект',self.open_project,'folder'),('Сохранить проект',self.save_project,'save')]:
             b=self.action_button(text,fn,ico);b.setObjectName('Nav');sidebar_button(b,text)
         sl.addStretch();about=self.action_button('О модели лаборатории',self.about,'settings');about.setObjectName('Nav');sidebar_button(about,'О модели лаборатории')
-        offline=label('●  OFFLINE ENGINE   /   v2.4','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
+        offline=label('●  OFFLINE ENGINE   /   v2.5','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
         root.addWidget(side)
-        right=QWidget();rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0);root.addWidget(right,1)
+        right=QWidget();self.workspace_right=right;rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0);root.addWidget(right,1)
         body=QWidget();bl=QVBoxLayout(body);bl.setContentsMargins(13,8,13,10);bl.setSpacing(12);rl.addWidget(body,1)
         self.workspace_split=QSplitter(Qt.Orientation.Vertical);self.workspace_split.setObjectName('WorkspaceSplit');self.workspace_split.setChildrenCollapsible(False);self.workspace_split.setHandleWidth(10);bl.addWidget(self.workspace_split,1)
         self.overview_widget=QWidget();overview=QVBoxLayout(self.overview_widget);overview.setContentsMargins(0,0,0,0);overview.setSpacing(10)
@@ -137,6 +138,7 @@ class MainWindow(QMainWindow):
         edit.addSeparator();self.menu_action(edit,'Добавить узел',self.add_node,'Ctrl+Shift+N');self.menu_action(edit,'Добавить канал',self.add_link,'Ctrl+L');self.menu_action(edit,'Удалить выбранный объект',self.delete_selected)
         self.draw_link_action=QAction('Создать канал мышью',self);self.draw_link_action.setCheckable(True);self.draw_link_action.setShortcut('Ctrl+Shift+L');self.draw_link_action.toggled.connect(self.toggle_link_drawing);self.graph.connection_mode_changed.connect(self.draw_link_action.setChecked);edit.addAction(self.draw_link_action)
         self.menu_action(view,'Вся топология',self.graph.fit,'Ctrl+0');self.menu_action(view,'Сбросить расположение',self.auto_layout)
+        self.expand_topology_action=QAction('Развернуть топологию',self);self.expand_topology_action.setCheckable(True);self.expand_topology_action.setShortcut('F11');self.expand_topology_action.toggled.connect(self.set_topology_expanded);view.addAction(self.expand_topology_action)
         self.sidebar_action=QAction('Свернуть левое меню',self);self.sidebar_action.setCheckable(True);self.sidebar_action.setShortcut('Ctrl+B');self.sidebar_action.toggled.connect(self.set_sidebar_collapsed);view.addAction(self.sidebar_action)
         self.overview_action=self.menu_action(view,'Высота верхнего блока…',self.configure_overview_height)
         self.menu_action(view,'Компактный верхний блок',lambda:self.set_overview_height(OVERVIEW_MIN_HEIGHT))
@@ -147,7 +149,7 @@ class MainWindow(QMainWindow):
             theme_group.addAction(action);theme_menu.addAction(action);self.theme_actions[theme_name]=action
         templates=view.addMenu('Шаблоны топологии')
         for name,key in [('Гибридное ядро','hybrid'),('SS7 / SIGTRAN','ss7'),('Diameter EPC','diameter'),('5G SA / Service-Based Core','5g')]:self.menu_action(templates,name,lambda p=key:self.new_project(p))
-        self.menu_action(research_menu,'Запустить эксперимент',self.start_run,'F5');self.menu_action(research_menu,'Отменить вычисление',self.cancel_job,'Escape');self.menu_action(research_menu,'Сформировать ML-датасет',self.generate_dataset)
+        self.menu_action(research_menu,'Запустить эксперимент',self.start_run,'F5');self.menu_action(research_menu,'Отменить / выйти из режима карты',self.escape_action,'Escape');self.menu_action(research_menu,'Сформировать ML-датасет',self.generate_dataset)
         self.menu_action(help_menu,'О модели и ограничениях',self.about);self.menu_action(help_menu,'Горячие клавиши',self.shortcuts)
     def apply_theme(self,name,persist=True):
         set_theme(name);self.theme=name;app=QApplication.instance();app.setPalette(application_palette());app.setStyleSheet(stylesheet())
@@ -164,6 +166,7 @@ class MainWindow(QMainWindow):
         for widget in self.findChildren(QComboBox):
             if widget.property('nodeKindIcons'):refresh_kind_icons(widget)
         self.graph.refresh_theme()
+        if self.expanded_workspace:self.expanded_workspace.refresh_icons()
         for chart in self.findChildren(Chart):chart.update()
         for key,action in self.theme_actions.items():action.setChecked(key==name)
         if persist:self.settings.setValue('theme',name);self.settings.sync();self.statusBar().showMessage('Тема: '+THEMES[name],6000)
@@ -218,6 +221,7 @@ class MainWindow(QMainWindow):
         self.workspace_split.setSizes([height,max(1,self.workspace_split.height()-height-self.workspace_split.handleWidth())])
     def resizeEvent(self,event):
         super().resizeEvent(event)
+        if getattr(self,'topology_expanded',False):self.expanded_workspace.setGeometry(self.centralWidget().rect())
         if hasattr(self,'overview_action'):QTimer.singleShot(0,self.apply_overview_height)
     def set_overview_height(self,height,persist=True):
         self.overview_height=max(OVERVIEW_MIN_HEIGHT,min(480,int(height)));self.apply_overview_height()
@@ -239,9 +243,10 @@ class MainWindow(QMainWindow):
     def topology_page(self):
         page=QWidget();layout=QVBoxLayout(page);layout.setContentsMargins(0,0,0,0);layout.setSpacing(12)
         self.topology_split=QSplitter(Qt.Orientation.Horizontal)
-        canvas,cl,ch=panel('Сетевая карта');cl.setContentsMargins(0,0,0,0);ch.setContentsMargins(16,12,16,0)
+        canvas,cl,ch=panel('Сетевая карта');self.canvas_layout=cl;cl.setContentsMargins(0,0,0,0);ch.setContentsMargins(16,12,16,0)
         self.map_status=label('Готово','Muted');ch.addWidget(self.map_status)
         ch.addWidget(self.action_button('Экспорт…',lambda:self.export_visuals('topology'),'download'))
+        self.expand_topology_button=self.action_button('Развернуть',lambda:self.set_topology_expanded(True),'fit');self.expand_topology_button.setToolTip('Топология на всю рабочую область программы (F11)');ch.addWidget(self.expand_topology_button)
         toolbar=QHBoxLayout();toolbar.setContentsMargins(12,0,12,0)
         toolbar.addWidget(self.action_button('Узел',self.add_node,'plus'));toolbar.addWidget(self.action_button('Канал',self.add_link,'link'))
         self.draw_link_button=button('Соединить',None,'link');self.draw_link_button.setObjectName('LinkMode');self.draw_link_button.setCheckable(True);self.draw_link_button.setToolTip('Создать канал мышью: выберите два узла или перетащите между ними. Ctrl+Shift+L; Esc — отмена.');toolbar.addWidget(self.draw_link_button)
@@ -257,6 +262,24 @@ class MainWindow(QMainWindow):
         self.graph.connection_requested.connect(lambda source,target:self.call(self.add_link,source,target),Qt.ConnectionType.QueuedConnection)
         self.graph.connection_hint.connect(lambda text:self.statusBar().showMessage(text,8000))
         return page
+    def set_topology_expanded(self,expanded):
+        expanded=bool(expanded)
+        if expanded==self.topology_expanded:return
+        if expanded:
+            self.show_page(0)
+            if self.expanded_workspace is None:
+                from .topology_workspace import ExpandedTopology
+                self.expanded_workspace=ExpandedTopology(self)
+            self.normal_topology_sizes=self.topology_split.sizes();self.topology_expanded=True
+            self.expanded_workspace.open_canvas();self.sidebar.hide();self.workspace_right.hide()
+        else:
+            self.topology_expanded=False;self.expanded_workspace.close_canvas();self.sidebar.show();self.workspace_right.show();self.apply_overview_height()
+        self.expand_topology_action.blockSignals(True);self.expand_topology_action.setChecked(expanded);self.expand_topology_action.blockSignals(False)
+        self.graph.setFocus()
+    def escape_action(self):
+        if self.graph.connection_mode or self.graph.connection_source:self.graph.set_connection_mode(False)
+        elif self.topology_expanded:self.set_topology_expanded(False)
+        else:self.cancel_job()
     def experiments_page(self):
         outer=QScrollArea();outer.setWidgetResizable(True);content=QWidget();l=QVBoxLayout(content);l.setContentsMargins(0,0,0,0);l.setSpacing(15);outer.setWidget(content)
         def parameter_row(*fields):
@@ -350,6 +373,7 @@ class MainWindow(QMainWindow):
         return page
 
     def show_page(self,index):
+        if self.topology_expanded and index!=0:self.set_topology_expanded(False)
         self.pages.setCurrentIndex(index)
         for i,b in enumerate(self.nav_buttons):b.setChecked(i==index)
         titles=['Топология сети','Конструктор экспериментов','Телеметрия сети','Мастерская детекторов','Результаты исследований']
@@ -380,6 +404,7 @@ class MainWindow(QMainWindow):
         self.selected=(kind,rid);self.fill_inspector()
     def fill_inspector(self):
         frame,layout,head=panel('Инспектор объекта')
+        if self.topology_expanded:head.itemAt(0).widget().hide()
         kind,rid=self.selected
         item=next((x for x in self.project['nodes' if kind=='node' else 'links'] if x['id']==rid),None)
         self.inspector_fields={}
@@ -425,6 +450,25 @@ class MainWindow(QMainWindow):
         rid='node-'+uuid.uuid4().hex[:7];self.selected=('node',rid)
         if v['point_code']=='1-1-1':v['point_code']=f'2-20-{len(self.project["nodes"])+1}'
         self.mutate('Добавить узел',lambda p:p['nodes'].append(dict(id=rid,x=600,y=300,enabled=True,**v)))
+    def quick_add_node(self,kind):
+        if kind not in NODE_KINDS:raise ValueError('Неизвестный тип узла')
+        number=1;names={n['name'] for n in self.project['nodes']}
+        while f'{kind} {number}' in names:number+=1
+        center=self.graph.mapToScene(self.graph.viewport().rect().center());position=None
+        for radius in range(25):
+            offsets=[(x,y) for y in range(-radius,radius+1) for x in range(-radius,radius+1) if max(abs(x),abs(y))==radius]
+            for dx,dy in offsets:
+                x=max(100,min(19800,center.x()+dx*190));y=max(100,min(19800,center.y()+dy*125))
+                if all(abs(n['x']-x)>=180 or abs(n['y']-y)>=115 for n in self.project['nodes']):position=(x,y);break
+            if position is not None:break
+        if position is None:raise ValueError('Нет свободного места в видимой области. Переместите карту.')
+        rid='node-'+uuid.uuid4().hex[:7]
+        code=1;used_codes={n['point_code'] for n in self.project['nodes']}
+        while f'2-20-{code}' in used_codes:code+=1
+        node=Node(id=rid,name=f'{kind} {number}',kind=kind,x=position[0],y=position[1],point_code=f'2-20-{code}').model_dump()
+        self.graph.set_connection_mode(False);self.graph.fit_mode=False;self.selected=('node',rid);self.mutate('Добавить '+kind,lambda p:p['nodes'].append(node))
+        self.graph.ensureVisible(self.graph.node_items[rid],65,65)
+        self.statusBar().showMessage(f'{node["name"]} добавлен. Параметры — в инспекторе; Ctrl+Z — отменить.',5000)
     def toggle_link_drawing(self,enabled):
         if enabled:self.show_page(0)
         self.graph.set_connection_mode(enabled)
@@ -730,13 +774,14 @@ class MainWindow(QMainWindow):
         if not self.model_record:raise ValueError('Выберите модель')
         r=copy.deepcopy(self.model_record);r['exploratory_threshold']=self.current_threshold;r['exploratory_test_metrics']=self.model_metrics;self.write_export(r,'model')
     def shortcuts(self):
-        QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF5 — запустить эксперимент\nEscape — отменить создание канала / запросить отмену вычисления\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
+        QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.4.1','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.5.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return
         if not self.may_replace():event.ignore();return
+        if self.topology_expanded:self.set_topology_expanded(False)
         try:self.save_workspace();self.settings.setValue('geometry',self.saveGeometry());self.settings.setValue('topologySplitter',self.topology_split.sizes())
         except Exception as e:self.error(str(e));event.ignore();return
         event.accept()
