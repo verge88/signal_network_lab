@@ -1,5 +1,6 @@
 """Standalone styled exports. Rendering never depends on the application's theme."""
 import csv
+import copy
 import html
 import io
 import json
@@ -7,7 +8,7 @@ import math
 import re
 import tempfile
 import zipfile
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -18,7 +19,8 @@ from PySide6.QtSvg import QSvgGenerator
 
 
 FORMATS={'chart':('png','jpeg','svg','pdf','csv','json'),
-         'table':('csv','tsv','json','xlsx','html','pdf')}
+         'table':('csv','tsv','json','xlsx','html','pdf'),
+         'topology':('png','jpeg','svg','pdf')}
 
 
 @dataclass
@@ -43,6 +45,22 @@ class ExportStyle:
     height:int=900
     dpi:int=150
     landscape:bool=True
+    node_background:str='#f7f7f7'
+    node_border:str='#666666'
+    node_names:bool=True
+    node_types:bool=True
+    node_ids:bool=False
+    node_details:bool=False
+    node_icons:bool=True
+    link_labels:bool=True
+    link_protocol:bool=True
+    link_latency:bool=True
+    protocol_colors:bool=False
+    protocol_patterns:bool=True
+    topology_title:bool=True
+    transparent_background:bool=False
+    node_scale:float=1.0
+    canvas_margin:int=32
 
     @classmethod
     def load(cls,values):
@@ -53,13 +71,13 @@ class ExportStyle:
         except (ValueError,TypeError):return cls()
 
     def validate(self):
-        for key in ('background','foreground','accent','grid_color','header_background','alternate_background'):
+        for key in ('background','foreground','accent','grid_color','header_background','alternate_background','node_background','node_border'):
             if not re.fullmatch(r'#[0-9a-fA-F]{6}',str(getattr(self,key))):raise ValueError('Некорректный цвет: '+key)
-        for key,lo,hi in [('font_size',8,32),('line_width',.5,8),('padding',2,20),('width',640,4096),('height',360,4096),('dpi',72,600)]:
+        for key,lo,hi in [('font_size',8,32),('line_width',.5,8),('padding',2,20),('width',640,4096),('height',360,4096),('dpi',72,600),('node_scale',.5,2),('canvas_margin',8,160)]:
             value=getattr(self,key)
             if not isinstance(value,(int,float)) or not math.isfinite(value) or not lo<=value<=hi:raise ValueError('Некорректный параметр: '+key)
-            if key!='line_width' and not isinstance(value,int):raise ValueError('Нужно целое число: '+key)
-        for key in ('grid','markers','legend','events','alternating','landscape'):
+            if key not in ('line_width','node_scale') and not isinstance(value,int):raise ValueError('Нужно целое число: '+key)
+        for key in ('grid','markers','legend','events','alternating','landscape','node_names','node_types','node_ids','node_details','node_icons','link_labels','link_protocol','link_latency','protocol_colors','protocol_patterns','topology_title','transparent_background'):
             if not isinstance(getattr(self,key),bool):raise ValueError('Некорректный переключатель: '+key)
         if self.line_style not in ('solid','dash','dot'):raise ValueError('Неизвестный тип линии')
         if not isinstance(self.font_family,str) or not self.font_family.strip():raise ValueError('Не задан шрифт')
@@ -67,8 +85,8 @@ class ExportStyle:
 
 PRESETS={
     'Светлый монохром':ExportStyle(),
-    'Pure Black':ExportStyle(background='#000000',foreground='#ffffff',accent='#ffffff',grid_color='#393939',header_background='#222222',alternate_background='#101010'),
-    'Научный':ExportStyle(accent='#2457a7',header_background='#e8eff9',alternate_background='#f4f7fb',font_family='Arial',markers=False),
+    'Pure Black':ExportStyle(background='#000000',foreground='#ffffff',accent='#ffffff',grid_color='#393939',header_background='#222222',alternate_background='#101010',node_background='#101010',node_border='#bbbbbb'),
+    'Научный':ExportStyle(accent='#2457a7',header_background='#e8eff9',alternate_background='#f4f7fb',font_family='Arial',markers=False,node_background='#f4f7fb',node_border='#2457a7'),
 }
 
 
@@ -83,10 +101,15 @@ class ExportData:
     x_label:str='Время, s'
     y_label:str=''
     metadata:dict=field(default_factory=dict)
+    nodes:list=field(default_factory=list)
+    links:list=field(default_factory=list)
 
     def validate(self):
         if self.kind not in FORMATS:raise ValueError('Неизвестный объект экспорта')
-        if self.kind=='table':
+        if self.kind=='topology':
+            from .topology_export import validate_topology
+            validate_topology(self)
+        elif self.kind=='table':
             if not self.headers or not self.rows:raise ValueError('В выбранной таблице нет строк для экспорта')
             if any(len(row)!=len(self.headers) for row in self.rows):raise ValueError('Число ячеек не совпадает с числом столбцов')
         elif not any(s.get('points') for s in self.series):raise ValueError('У графика пока нет данных. Выполните расчёт или выберите модель.')
@@ -106,6 +129,26 @@ def chart_data(widget,title,x_label='Время, s',y_label=''):
         points=[(float(x),float(y)) for x,y in source.get('points',[]) if x is not None and y is not None and math.isfinite(float(x)) and math.isfinite(float(y))]
         if points:series.append(dict(name=source.get('name',f'Ряд {index+1}'),points=points))
     return ExportData('chart',title,series=series,incidents=list(widget.incidents),x_label=x_label,y_label=y_label)
+
+
+def topology_data(widget,title,selected=False):
+    chosen=widget.scene_model.selectedItems();node_ids={item.node['id'] for item in chosen if hasattr(item,'node')};link_ids={item.link['id'] for item in chosen if hasattr(item,'link')}
+    included=set(node_ids)
+    if selected:
+        for lid in link_ids:included.update((widget.edge_items[lid].link['source'],widget.edge_items[lid].link['target']))
+    nodes=[]
+    for nid,item in widget.node_items.items():
+        if not selected or nid in included:
+            node=copy.deepcopy(item.node);node.update(x=item.pos().x(),y=item.pos().y());nodes.append(node)
+    links=[copy.deepcopy(item.link) for lid,item in widget.edge_items.items() if not selected or lid in link_ids or (item.link['source'] in node_ids and item.link['target'] in node_ids)]
+    return ExportData('topology',title,nodes=nodes,links=links)
+
+
+def paint_visual(p,rect,data,style):
+    if data.kind=='topology':
+        from .topology_export import paint_topology
+        paint_topology(p,rect,data,style)
+    else:paint_chart(p,rect,data,style)
 
 
 def chart_rows(data):
@@ -194,9 +237,10 @@ def table_document(data,style,width,preview=False):
 
 
 def render_preview(data,style):
-    image=QImage(900,510,QImage.Format.Format_ARGB32);image.fill(QColor(style.background));p=QPainter(image)
+    image=QImage(900,510,QImage.Format.Format_ARGB32);image.fill(Qt.GlobalColor.transparent if data.kind=='topology' and style.transparent_background else QColor(style.background));p=QPainter(image)
     try:
-        if data.kind=='chart':paint_chart(p,chart_box(900,510,style),data,style)
+        if data.kind in ('chart','topology'):
+            paint_visual(p,chart_box(900,510,style),data,style)
         else:
             doc=table_document(data,style,872,True);p.translate(14,12);doc.drawContents(p,QRectF(0,0,872,486))
     finally:p.end()
@@ -214,8 +258,8 @@ def write_pdf(path,data,style):
     p=QPainter(writer)
     if not p.isActive():raise OSError('Не удалось открыть PDF для записи')
     try:
-        if data.kind=='chart':
-            p.fillRect(QRectF(0,0,writer.width(),writer.height()),QColor(style.background));paint_chart(p,chart_box(writer.width(),writer.height(),style),data,style)
+        if data.kind in ('chart','topology'):
+            p.fillRect(QRectF(0,0,writer.width(),writer.height()),QColor(style.background));paint_visual(p,chart_box(writer.width(),writer.height(),style),data,replace(style,transparent_background=False))
         else:
             width,height=writer.width(),writer.height()-32;doc=table_document(data,style,width);doc.setPageSize(QSizeF(width,height));count=doc.pageCount()
             for page in range(count):
@@ -269,6 +313,7 @@ def export_file(path,data,style,fmt):
     data.validate();style.validate();path=Path(path)
     if fmt not in FORMATS[data.kind]:raise ValueError('Формат не поддерживается для этого объекта')
     if path.suffix.lower()!='.'+fmt:raise ValueError('Расширение файла должно быть .'+fmt)
+    if data.kind=='topology' and fmt not in ('png','svg'):style=replace(style,transparent_background=False)
     # A failed render leaves an existing destination intact.
     with tempfile.TemporaryDirectory(prefix='.signal-export-',dir=path.parent) as directory:
         target=Path(directory)/path.name
@@ -280,13 +325,14 @@ def export_file(path,data,style,fmt):
         elif fmt=='xlsx':write_xlsx(target,data,style)
         elif fmt=='pdf':write_pdf(target,data,style)
         elif fmt=='svg':
-            svg=QSvgGenerator();svg.setFileName(str(target));svg.setSize(QSize(style.width,style.height));svg.setViewBox(QRectF(0,0,style.width,style.height));svg.setResolution(style.dpi);svg.setTitle(data.title);svg.setDescription(data.x_label+' / '+data.y_label)
+            svg=QSvgGenerator();svg.setFileName(str(target));svg.setSize(QSize(style.width,style.height));svg.setViewBox(QRectF(0,0,style.width,style.height));svg.setResolution(style.dpi);svg.setTitle(data.title);svg.setDescription(f'{len(data.nodes)} nodes / {len(data.links)} links' if data.kind=='topology' else data.x_label+' / '+data.y_label)
             p=QPainter(svg)
-            try:paint_chart(p,QRectF(0,0,style.width,style.height),data,style)
+            try:paint_visual(p,QRectF(0,0,style.width,style.height),data,style)
             finally:p.end();del p,svg
         else:
-            image=QImage(style.width,style.height,QImage.Format.Format_RGB32);image.fill(QColor(style.background));image.setDotsPerMeterX(round(style.dpi/0.0254));image.setDotsPerMeterY(round(style.dpi/0.0254));p=QPainter(image)
-            try:paint_chart(p,QRectF(0,0,style.width,style.height),data,style)
+            alpha=data.kind=='topology' and style.transparent_background and fmt=='png'
+            image=QImage(style.width,style.height,QImage.Format.Format_ARGB32 if alpha else QImage.Format.Format_RGB32);image.fill(Qt.GlobalColor.transparent if alpha else QColor(style.background));image.setDotsPerMeterX(round(style.dpi/0.0254));image.setDotsPerMeterY(round(style.dpi/0.0254));p=QPainter(image)
+            try:paint_visual(p,QRectF(0,0,style.width,style.height),data,style)
             finally:p.end()
             if not image.save(str(target),'JPEG' if fmt=='jpeg' else 'PNG',95 if fmt=='jpeg' else -1):raise OSError('Не удалось записать изображение')
         if not target.is_file() or not target.stat().st_size:raise OSError('Экспорт не создал файл')

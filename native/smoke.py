@@ -207,7 +207,7 @@ class SmokeTest(QObject):
         export_ui.QFileDialog=TestFileDialog
         try:
             w.settings=QSettings(str(storage.DATA/'export-self-test.ini'),QSettings.Format.IniFormat)
-            assert len(w.export_sources())==24
+            assert len(w.export_sources())==25
             for theme in ('monochrome','light_monochrome','dark'):
                 w.apply_theme(theme,persist=False)
                 dialog=ExportDialog(w,w.export_sources(),'telemetry_chart');dialog.show();self.app.processEvents();dialog.refresh_preview()
@@ -236,7 +236,27 @@ class SmokeTest(QObject):
                 assert json.loads(w.settings.value('export/style'))['accent']=='#2457a7'
                 dialog.close();dialog.deleteLater()
                 restored=ExportDialog(w,w.export_sources(),'telemetry_chart');assert restored.style().accent=='#2457a7';restored.close();restored.deleteLater()
+                chart_style=w.settings.value('export/style')
+                w.graph.scene_model.clearSelection();w.graph.node_items['gnb'].setSelected(True);w.graph.node_items['upf'].setSelected(True)
+                topology=ExportDialog(w,w.export_sources(),'topology');topology.show();self.app.processEvents();topology.preset_combo.setCurrentText('Научный')
+                topology.style_fields['grid'].setChecked(False);topology.style_fields['protocol_colors'].setChecked(True);topology.style_fields['node_ids'].setChecked(True)
+                topology.style_fields['width'].setValue(1800);topology.style_fields['height'].setValue(1100);topology.style_fields['node_background'].setText('#fef2dd');topology.refresh_preview()
+                assert topology.save_button.isEnabled(),topology.error_label.text();assert len(topology.data().nodes)==len(w.project['nodes'])
+                if self.output:topology.grab().save(str(self.output/f'{theme}-export-topology-dialog.png'))
+                if theme=='light_monochrome':
+                    for fmt in FORMATS['topology']:export_file(destination/f'topology.{fmt}',topology.data(),topology.style(),fmt)
+                topology.scope_combo.setCurrentIndex(1);topology.refresh_preview();assert len(topology.data().nodes)==2 and len(topology.data().links)==1
+                topology.format_combo.setCurrentIndex(topology.format_combo.findData('svg'));topology.style_fields['transparent_background'].setChecked(True);topology.refresh_preview()
+                chosen_topology=destination/f'{theme}-topology-fragment.svg'
+                def accept_topology_save():
+                    file_dialog=topology.findChild(QFileDialog);file_dialog.selectFile(str(chosen_topology));QDialog.accept(file_dialog)
+                QTimer.singleShot(0,accept_topology_save);topology.save_export()
+                assert chosen_topology.exists() and topology.last_path==chosen_topology
+                assert w.settings.value('export/style')==chart_style and json.loads(w.settings.value('export/topologyStyle'))['node_background']=='#fef2dd'
+                topology.close();topology.deleteLater()
+                restored=ExportDialog(w,w.export_sources(),'topology');assert restored.style().node_background=='#fef2dd';restored.close();restored.deleteLater()
             self.completed.append('styled export dialog in all themes, selected rows, saved appearance, all 12 chart/table formats and native file saving')
+            self.completed.append('styled topology export: PNG/JPEG/SVG/PDF, whole graph and selected fragment, native saving, transparent SVG and separate appearance in all themes')
         finally:export_ui.QFileDialog=original_file_dialog;w.settings=original_settings;w.apply_theme(original_theme,persist=False)
     def next_stage(self,result):
         # Wait for the worker's finished signal before scheduling the next job.

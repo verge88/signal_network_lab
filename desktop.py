@@ -35,7 +35,7 @@ def main():
         if (candidate/'desktop.py').is_file() and (candidate/'lab'/'schema.py').is_file():
             storage.migrate_workspace(candidate/'data')
     from native.window import MainWindow
-    app=QApplication(sys.argv[:1]);app.setApplicationName('Signal Lab Desktop');app.setApplicationVersion('2.3.4');app.setOrganizationName('SignalLab');app.setStyle('Fusion')
+    app=QApplication(sys.argv[:1]);app.setApplicationName('Signal Lab Desktop');app.setApplicationVersion('2.4.0');app.setOrganizationName('SignalLab');app.setStyle('Fusion')
     # The offscreen platform does not enumerate Windows fonts automatically.
     # Loading installed fonts also keeps native and test renders consistent.
     fonts=Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts'

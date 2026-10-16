@@ -103,7 +103,7 @@ class MainWindow(QMainWindow):
         for text,fn,ico in [('Открыть проект',self.open_project,'folder'),('Сохранить проект',self.save_project,'save')]:
             b=self.action_button(text,fn,ico);b.setObjectName('Nav');sidebar_button(b,text)
         sl.addStretch();about=self.action_button('О модели лаборатории',self.about,'settings');about.setObjectName('Nav');sidebar_button(about,'О модели лаборатории')
-        offline=label('●  OFFLINE ENGINE   /   v2.3','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
+        offline=label('●  OFFLINE ENGINE   /   v2.4','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
         root.addWidget(side)
         right=QWidget();rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0);root.addWidget(right,1)
         body=QWidget();bl=QVBoxLayout(body);bl.setContentsMargins(13,8,13,10);bl.setSpacing(12);rl.addWidget(body,1)
@@ -129,7 +129,8 @@ class MainWindow(QMainWindow):
         for title,shortcut,fn in [('Новый гибридный проект','Ctrl+N',lambda:self.new_project('hybrid')),('Открыть…','Ctrl+O',self.open_project),('Сохранить','Ctrl+S',self.save_project),('Сохранить как…','Ctrl+Shift+S',lambda:self.save_project(True)),('Экспорт выбранного прогона…','Ctrl+E',self.export_run)]:
             self.menu_action(file,title,fn,shortcut)
         file.addSeparator();self.menu_action(file,'Папка данных',lambda:QDesktopServices.openUrl(QUrl.fromLocalFile(str(storage.DATA))))
-        self.visual_export_action=self.menu_action(file,'Экспорт графиков и таблиц…',self.export_visuals,'Ctrl+Shift+E')
+        self.menu_action(file,'Экспорт схемы топологии…',lambda:self.export_visuals('topology'),'Ctrl+Shift+T')
+        self.visual_export_action=self.menu_action(file,'Экспорт схем, графиков и таблиц…',self.export_visuals,'Ctrl+Shift+E')
         self.menu_action(file,'Выход',self.close,'Ctrl+Q')
         undo_action=self.undo.createUndoAction(self,'Отменить');undo_action.setShortcut(QKeySequence.StandardKey.Undo);edit.addAction(undo_action)
         redo_action=self.undo.createRedoAction(self,'Повторить');redo_action.setShortcut(QKeySequence.StandardKey.Redo);edit.addAction(redo_action)
@@ -172,11 +173,13 @@ class MainWindow(QMainWindow):
         for key,title,x,y in charts:
             record=self.model_record if key in ('roc_chart','pr_chart') else self.run_record
             sources.append(dict(key=key,title=title,kind='chart',widget=getattr(self,key),x_label=x,y_label=y,metadata=dict(record_id=record.get('id') if record else None)))
+        sources.append(dict(key='topology',title='Топология · '+self.project['name'],kind='topology',widget=self.graph,metadata=dict(project_name=self.project['name'])))
         for key,title in [('flows_table','Сигнальные потоки'),('incidents_table','События сценария'),('sweep_table','Параметрическое исследование'),('calibration_table','Калибровка'),('trace_table','Транзакции · текущий фильтр'),('lifecycle_table','Отказы и состояния'),('procedure_table','Процедуры'),('transport_table','Транспорт'),('message_table','Запросы и ответы'),('fiveg_table','5G · NF / сервисы'),('control_table','Управляющий обмен'),('routing_state_table','Представления маршрутизаторов'),('user_plane_table','5G · пользовательские пакеты'),('confusion','Матрица ошибок'),('importance','Важность признаков'),('prediction_table','Применение детектора'),('runs_table','Библиотека прогонов'),('comparison','Сравнение прогонов'),('projects_table','Библиотека проектов'),('series_table','Библиотека серий')]:
             sources.append(dict(key=key,title=title,kind='table',widget=getattr(self,key)))
         return sources
     def install_export_actions(self):
         for source in self.export_sources():
+            if source['kind']=='topology':continue
             widget=source['widget'];widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             widget.customContextMenuRequested.connect(lambda point,w=widget,key=source['key']:self.export_context_menu(w,point,key))
             widget.setToolTip('Правой кнопкой → Экспорт с оформлением…')
@@ -184,7 +187,7 @@ class MainWindow(QMainWindow):
         menu=QMenu(self);self.menu_action(menu,'Экспорт с оформлением…',lambda:self.export_visuals(key));origin=widget.viewport() if hasattr(widget,'viewport') else widget;menu.exec(origin.mapToGlobal(point))
     def export_visuals(self,key=None):
         from .export_dialog import ExportDialog
-        key=key or ('rate_chart','flows_table','telemetry_chart','roc_chart','runs_table')[self.pages.currentIndex()]
+        key=key or ('topology','flows_table','telemetry_chart','roc_chart','runs_table')[self.pages.currentIndex()]
         dialog=ExportDialog(self,self.export_sources(),key);dialog.exec();dialog.deleteLater()
     def toggle_sidebar(self):self.set_sidebar_collapsed(not self.sidebar_collapsed)
     def set_sidebar_collapsed(self,collapsed,persist=True):
@@ -238,6 +241,7 @@ class MainWindow(QMainWindow):
         self.topology_split=QSplitter(Qt.Orientation.Horizontal)
         canvas,cl,ch=panel('Сетевая карта');cl.setContentsMargins(0,0,0,0);ch.setContentsMargins(16,12,16,0)
         self.map_status=label('Готово','Muted');ch.addWidget(self.map_status)
+        ch.addWidget(self.action_button('Экспорт…',lambda:self.export_visuals('topology'),'download'))
         toolbar=QHBoxLayout();toolbar.setContentsMargins(12,0,12,0)
         toolbar.addWidget(self.action_button('Узел',self.add_node,'plus'));toolbar.addWidget(self.action_button('Канал',self.add_link,'link'))
         self.draw_link_button=button('Соединить',None,'link');self.draw_link_button.setObjectName('LinkMode');self.draw_link_button.setCheckable(True);self.draw_link_button.setToolTip('Создать канал мышью: выберите два узла или перетащите между ними. Ctrl+Shift+L; Esc — отмена.');toolbar.addWidget(self.draw_link_button)
@@ -719,9 +723,9 @@ class MainWindow(QMainWindow):
         if not self.model_record:raise ValueError('Выберите модель')
         r=copy.deepcopy(self.model_record);r['exploratory_threshold']=self.current_threshold;r['exploratory_test_metrics']=self.model_metrics;self.write_export(r,'model')
     def shortcuts(self):
-        QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nF5 — запустить эксперимент\nEscape — отменить создание канала / запросить отмену вычисления\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
+        QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF5 — запустить эксперимент\nEscape — отменить создание канала / запросить отмену вычисления\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.3.4','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.4.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return
