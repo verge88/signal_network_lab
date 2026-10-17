@@ -51,7 +51,7 @@ class SmokeTest(QObject):
                 w.apply_theme(name);w.set_sidebar_collapsed(False,persist=False);w.set_overview_height(125,persist=False)
                 assert saved_theme(QSettings(settings_path,QSettings.Format.IniFormat))==name
                 self.capture_node_icons(name)
-                for page,title in enumerate(('topology','experiments','telemetry','ml','results')):
+                for page,title in enumerate(('topology','experiments','telemetry','ml','results','help')):
                     w.show_page(page);self.app.processEvents()
                     if name in ('monochrome','light_monochrome'):
                         background='#ffffff' if name=='light_monochrome' else '#000000'
@@ -101,7 +101,7 @@ class SmokeTest(QObject):
                 w.set_overview_height(125);w.show_page(0);self.app.processEvents()
             assert json.dumps(w.project,sort_keys=True)==project
             assert w.selected==selection and w.undo.count()==undo_count
-            self.completed.append('pure-black and light monochrome themes, neutral rendering on all five pages and saved theme')
+            self.completed.append('pure-black and light monochrome themes, neutral rendering on all six pages including the handbook and saved theme')
             self.completed.append('collapsible sidebar, icon navigation, tooltips, menu toggle and persisted state across all themes')
             self.completed.append('compact overview, real mouse resizing, numeric height dialog, saved height and page-switch restoration across all themes')
         finally:
@@ -109,10 +109,12 @@ class SmokeTest(QObject):
     def start(self):
         try:
             w=self.window
+            self.verify_startup()
             import gc
             assert not gc.isenabled() and self.app.gui_collector.collect()
             self.completed.append('Python cyclic collection is scheduled on the GUI thread; automatic collection in simulation workers is disabled')
             self.verify_protocol_regressions()
+            self.verify_handbook()
             self.verify_expanded_topology()
             self.verify_mouse_links()
             # Exercise native forms and all page construction paths.
@@ -129,6 +131,36 @@ class SmokeTest(QObject):
             w.job_completed.connect(self.next_stage)
             w.start_run()
         except Exception as e:self.fail(e)
+    def verify_startup(self):
+        from .startup import StartupSplash
+        state=self.app.startup_state
+        assert all(state[key] for key in ('splash_shown','before_window_import','before_ml_import','main_window_visible','completed','splash_hidden')),str(state)
+        assert not self.app.startup_splash.isVisible()
+        for theme in ('dark','monochrome','light_monochrome'):
+            splash=StartupSplash(theme);splash.show_startup();splash.update_status('Подготовка интерфейса…')
+            assert splash.isVisible() and splash.width()==400 and splash.height()==176
+            QTest.mouseClick(splash,Qt.MouseButton.LeftButton,pos=QPoint(150,90));assert splash.isVisible()
+            if self.output:splash.grab().save(str(self.output/f'{theme}-startup-splash.png'))
+            assert splash.complete(self.window) and not splash.isVisible();splash.deleteLater()
+        self.completed.append('startup splash is visible before main-window and ML imports, follows all themes, survives clicks and closes only after the main window is visible')
+    def verify_handbook(self):
+        from lab.schema import NODE_KINDS,LINK_PROTOCOLS
+        w=self.window;original=json.dumps(w.project,sort_keys=True);history=w.undo.count()
+        w.activateWindow();w.graph.setFocus();self.app.processEvents();QTest.keyClick(w.graph,Qt.Key.Key_F1);self.app.processEvents()
+        assert w.pages.currentIndex()==5 and w.nav_buttons[5].isChecked()
+        help_page=w.help_widget;assert len(help_page.chapters)>=25
+        w.show_help('Словарь сокращений');text=help_page.reader.toPlainText()
+        for term in NODE_KINDS+LINK_PROTOCOLS:assert term in text,'Missing glossary term: '+term
+        help_page.search.setText('Коэффициент вариации');self.app.processEvents();assert help_page.matches
+        assert 'Коэффициент вариации' in help_page.reader.textCursor().selectedText()
+        self.capture('native-help-search')
+        help_page.search.setText('неизвестное_слово_которого_нет_в_справке');assert 'Ничего не найдено' in help_page.status.text()
+        w.show_help('Основы сигнальных сетей');assert 'Сигнализация' in help_page.reader.toPlainText();self.capture('native-help-basics')
+        assert json.dumps(w.project,sort_keys=True)==original and w.undo.count()==history
+        w.show_page(0);w.set_topology_expanded(True);w.activateWindow();w.graph.setFocus();self.app.processEvents();QTest.keyClick(w.graph,Qt.Key.Key_F1);self.app.processEvents()
+        assert w.pages.currentIndex()==5 and not w.topology_expanded
+        w.show_help('Начало работы');w.show_page(0)
+        self.completed.append('offline handbook: 25 chapters, all node/protocol glossary entries, full-text Cyrillic search, no-results recovery, F1 from expanded topology and native help navigation')
     def verify_expanded_topology(self):
         from lab.schema import NODE_KINDS
         w=self.window;original=json.dumps(w.project,sort_keys=True);selection=w.selected;theme=w.theme;settings=w.settings;size=w.size()
@@ -308,6 +340,11 @@ class SmokeTest(QObject):
                 topology.style_fields['grid'].setChecked(False);topology.style_fields['protocol_colors'].setChecked(True);topology.style_fields['node_ids'].setChecked(True)
                 topology.style_fields['width'].setValue(1800);topology.style_fields['height'].setValue(1100);topology.style_fields['node_background'].setText('#fef2dd');topology.refresh_preview()
                 assert topology.save_button.isEnabled(),topology.error_label.text();assert len(topology.data().nodes)==len(w.project['nodes'])
+                topology.actual_size_button.click();assert topology.preview.transform().m11()==1
+                topology.zoom_in_button.click();assert topology.preview.transform().m11()>1
+                zoom=topology.preview.transform().m11();topology.refresh_preview();assert topology.preview.transform().m11()==zoom
+                if self.output:topology.grab().save(str(self.output/f'{theme}-export-topology-zoom.png'))
+                topology.fit_preview_button.click();assert topology.preview.fit_mode
                 if self.output:topology.grab().save(str(self.output/f'{theme}-export-topology-dialog.png'))
                 if theme=='light_monochrome':
                     for fmt in FORMATS['topology']:export_file(destination/f'topology.{fmt}',topology.data(),topology.style(),fmt)
@@ -323,6 +360,7 @@ class SmokeTest(QObject):
                 restored=ExportDialog(w,w.export_sources(),'topology');assert restored.style().node_background=='#fef2dd';restored.close();restored.deleteLater()
             self.completed.append('styled export dialog in all themes, selected rows, saved appearance, all 12 chart/table formats and native file saving')
             self.completed.append('styled topology export: PNG/JPEG/SVG/PDF, whole graph and selected fragment, native saving, transparent SVG and separate appearance in all themes')
+            self.completed.append('vector export preview with native text, 100% and wheel/button zoom, fit-to-view and persistent zoom after style edits')
         finally:export_ui.QFileDialog=original_file_dialog;w.settings=original_settings;w.apply_theme(original_theme,persist=False)
     def next_stage(self,result):
         # Wait for the worker's finished signal before scheduling the next job.
@@ -393,7 +431,11 @@ class SmokeTest(QObject):
                     w.details_tabs.setCurrentIndex(index);self.app.processEvents();self.capture(name)
                 self.completed.append('5G SA native topology, NF/flow editors, registration, PDU sessions and service telemetry')
                 self.completed.append('resource-bearing management, per-observer routing knowledge, N3/N6 user traffic and native telemetry')
-                self.verify_themes();self.verify_exports();w.show_page(0);w.undo.setClean();self.timeout.stop()
+                self.verify_themes();self.verify_exports();w.show_page(0);w.undo.setClean()
+                w.mutate('Проверка закрытия с историей',lambda p:p['nodes'][0].update(capacity=p['nodes'][0]['capacity']+1))
+                assert not w.undo.isClean()
+                self.completed.append('shutdown regression: destroy the actual main window with dirty undo history and reject exceptions raised during final cleanup')
+                self.timeout.stop()
                 report=dict(status='passed',checks=self.completed,qt_widgets=True,webview=False)
                 if self.output:(self.output/'native-smoke.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
                 print(json.dumps(report),flush=True);self.app.exit(0)

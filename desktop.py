@@ -5,9 +5,11 @@ import os
 import sys
 import traceback
 from pathlib import Path
+from time import perf_counter
 
 
 def main():
+    startup_started=perf_counter()
     parser=argparse.ArgumentParser(description='Signal Lab Desktop')
     parser.add_argument('--smoke-test',action='store_true',help='Verify Qt pages, simulation, dataset, training and inference offscreen')
     parser.add_argument('--screenshots',type=Path,help='Output directory for self-test renders')
@@ -21,8 +23,22 @@ def main():
         temporary=tempfile.TemporaryDirectory(prefix='signal-lab-native-')
         os.environ['SIGNAL_LAB_DATA_DIR']=temporary.name
     from PySide6.QtCore import Qt,QTimer
-    from PySide6.QtGui import QFont,QPalette,QColor,QFontDatabase
+    from PySide6.QtGui import QFont,QFontDatabase
     from PySide6.QtWidgets import QApplication,QMessageBox
+    app=QApplication(sys.argv[:1]);app.setApplicationName('Signal Lab Desktop');app.setApplicationVersion('2.6.1');app.setOrganizationName('SignalLab');app.setStyle('Fusion')
+    from native.qt_gc import GuiGarbageCollector
+    app.gui_collector=GuiGarbageCollector(app)
+    from native.startup import StartupSplash
+    splash=StartupSplash();app.startup_splash=splash;splash.show_startup()
+    app.startup_state=dict(splash_shown=splash.isVisible(),before_window_import='native.window' not in sys.modules,before_ml_import='sklearn' not in sys.modules,shown_ms=round((perf_counter()-startup_started)*1000))
+    # Show the card before data migration, scientific imports or UI construction.
+    fonts=Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts'
+    for filename in ('segoeui.ttf','seguisb.ttf','segoeuib.ttf'):
+        font_path=fonts/filename
+        if font_path.exists():QFontDatabase.addApplicationFont(str(font_path))
+    app.setFont(QFont('Segoe UI',10));splash.update_status('Загрузка компонентов…')
+    if args.smoke_test and args.screenshots:
+        args.screenshots.mkdir(parents=True,exist_ok=True);splash.grab().save(str(args.screenshots/'startup-splash.png'))
     from lab import storage
     # Windowed executables have no stderr. Keep native fault stacks available.
     import faulthandler
@@ -31,23 +47,14 @@ def main():
     crash_log=(crash_directory/'native-fault.log').open('a',encoding='utf-8')
     faulthandler.enable(crash_log,all_threads=True)
     if getattr(sys,'frozen',False) and not args.smoke_test:
+        splash.update_status('Подготовка рабочего пространства…')
         candidate=Path(sys.executable).resolve().parents[2]
         if (candidate/'desktop.py').is_file() and (candidate/'lab'/'schema.py').is_file():
             storage.migrate_workspace(candidate/'data')
-    from native.window import MainWindow
-    app=QApplication(sys.argv[:1]);app.setApplicationName('Signal Lab Desktop');app.setApplicationVersion('2.5.0');app.setOrganizationName('SignalLab');app.setStyle('Fusion')
-    from native.qt_gc import GuiGarbageCollector
-    app.gui_collector=GuiGarbageCollector(app)
-    # The offscreen platform does not enumerate Windows fonts automatically.
-    # Loading installed fonts also keeps native and test renders consistent.
-    fonts=Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts'
-    for filename in ('segoeui.ttf','seguisb.ttf','segoeuib.ttf'):
-        font_path=fonts/filename
-        if font_path.exists():QFontDatabase.addApplicationFont(str(font_path))
-    app.setFont(QFont('Segoe UI',10))
-    palette=QPalette();palette.setColor(QPalette.ColorRole.Window,QColor('#11151c'));palette.setColor(QPalette.ColorRole.WindowText,QColor('#e5ebf5'));palette.setColor(QPalette.ColorRole.Base,QColor('#171e28'));palette.setColor(QPalette.ColorRole.Text,QColor('#e5ebf5'));palette.setColor(QPalette.ColorRole.Button,QColor('#232c39'));palette.setColor(QPalette.ColorRole.ButtonText,QColor('#d6e4f7'));palette.setColor(QPalette.ColorRole.Highlight,QColor('#356354'));app.setPalette(palette)
+    runtime_errors=[]
     def exception_hook(kind,value,tb):
         text=''.join(traceback.format_exception(kind,value,tb))
+        runtime_errors.append(text)
         from lab.storage import DATA
         with (DATA/'desktop-errors.log').open('a',encoding='utf-8') as f:f.write(text+'\n')
         if args.smoke_test:
@@ -57,12 +64,25 @@ def main():
             print(text,file=sys.stderr,flush=True);app.exit(1)
         else:QMessageBox.critical(None,'Signal Lab — ошибка',str(value)+'\n\nПодробности: '+str(DATA/'desktop-errors.log'))
     sys.excepthook=exception_hook
-    window=MainWindow();window.show()
+    try:
+        splash.update_status('Загрузка компонентов…')
+        from native.window import MainWindow
+        splash.update_status('Подготовка интерфейса…');window=MainWindow();window.show();app.processEvents()
+        app.startup_state.update(main_window_visible=window.isVisible(),completed=splash.complete(window),ready_ms=round((perf_counter()-startup_started)*1000))
+        app.startup_state['splash_hidden']=not splash.isVisible()
+        if args.smoke_test and args.screenshots:
+            import json
+            (args.screenshots/'startup.json').write_text(json.dumps(app.startup_state,indent=2),encoding='utf-8')
+    finally:splash.close()
     if args.smoke_test:
         from native.smoke import SmokeTest
         test=SmokeTest(app,window,args.screenshots);QTimer.singleShot(50,test.start)
     result=app.exec()
-    window.thread_pool.waitForDone();app.gui_collector.stop()
+    window.thread_pool.waitForDone();window.timer.stop()
+    # Destroy child objects while Qt and the exception handler are still alive.
+    from shiboken6 import delete
+    delete(window);app.gui_collector.stop()
+    if args.smoke_test and runtime_errors:result=1
     faulthandler.disable();crash_log.close()
     if args.smoke_test:temporary.cleanup()
     return result

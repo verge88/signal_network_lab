@@ -1,6 +1,6 @@
 import math
 from shiboken6 import isValid
-from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QTimer, QEvent
+from PySide6.QtCore import Qt, QRectF, QPointF, Signal, Slot, QTimer, QEvent
 from PySide6.QtGui import QPainter, QPen, QPainterPath, QBrush, QFont
 from PySide6.QtWidgets import QApplication, QGraphicsObject, QGraphicsPathItem, QGraphicsItem, QGraphicsScene, QGraphicsView
 from .style import themed_color as QColor, current_theme
@@ -110,14 +110,17 @@ class NetworkView(QGraphicsView):
         if self.first_fit:self.fit();self.first_fit=False
     def refresh_theme(self):
         self.setBackgroundBrush(QColor('#141c27'));self.scene_model.update();self.viewport().update()
+    @Slot()
     def selection(self):
-        if self.loading or not isValid(self.scene_model):return
+        if self.loading or not isValid(self) or not isValid(self.scene_model):return
         items=self.scene_model.selectedItems()
         if len(items)!=1:self.selected.emit('','');return
         item=items[0]
         if isinstance(item,NodeItem):self.selected.emit('node',item.node['id'])
         else:self.selected.emit('link',item.link['id'])
+    @Slot()
     def fit(self):
+        if not isValid(self) or not isValid(self.scene_model):return
         self.fit_mode=True
         self.fitInView(self.scene_model.itemsBoundingRect().adjusted(-45,-45,45,45),Qt.AspectRatioMode.KeepAspectRatio)
     def resizeEvent(self,event):

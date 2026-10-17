@@ -4,13 +4,14 @@ import copy
 from dataclasses import asdict,replace
 from pathlib import Path
 from PySide6.QtCore import Qt,QTimer
-from PySide6.QtGui import QColor,QPixmap
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QDialog,QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,
     QScrollArea,QLabel,QLineEdit,QCheckBox,QFontComboBox,QColorDialog,QFileDialog,
     QMessageBox,QDialogButtonBox)
 from .widgets import label,button,combo,spin
 from .exporting import (ExportStyle,PRESETS,FORMATS,table_data,chart_data,topology_data,
-                        render_preview,export_file)
+                        export_file)
+from .export_preview import ExportPreview
 
 
 class ExportDialog(QDialog):
@@ -69,8 +70,16 @@ class ExportDialog(QDialog):
             field=QCheckBox(title);self.style_fields[key]=field;form.addRow(field);self.topology_rows.append(form.rowCount()-1)
         self.style_fields['protocol_patterns'].setToolTip('Если выключено, используется общий тип линии.')
         reset=button('Вернуть светлый монохром',lambda:self.apply_style(PRESETS['Светлый монохром']));form.addRow(reset)
-        preview=QVBoxLayout();body.addLayout(preview,1);preview.addWidget(label('Предпросмотр','PanelTitle'))
-        self.preview=QLabel();self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter);self.preview.setMinimumSize(490,280);preview.addWidget(self.preview,1)
+        preview=QVBoxLayout();body.addLayout(preview,1)
+        preview_header=QHBoxLayout();preview_header.addWidget(label('Предпросмотр','PanelTitle'));preview_header.addStretch()
+        self.preview=ExportPreview();self.zoom_label=label('','Muted');self.zoom_label.setMinimumWidth(48);preview_header.addWidget(self.zoom_label)
+        self.zoom_out_button=button('−',lambda:self.preview.zoom_by(1/1.25));self.zoom_out_button.setToolTip('Уменьшить предпросмотр')
+        self.zoom_in_button=button('+',lambda:self.preview.zoom_by(1.25));self.zoom_in_button.setToolTip('Увеличить предпросмотр')
+        self.actual_size_button=button('100%',lambda:self.preview.set_zoom(1));self.actual_size_button.setToolTip('Исходный размер без уменьшения')
+        self.fit_preview_button=button('Вписать',self.preview.fit_page)
+        for control in (self.zoom_out_button,self.zoom_in_button,self.actual_size_button,self.fit_preview_button):preview_header.addWidget(control)
+        self.preview.zoom_changed.connect(lambda value:self.zoom_label.setText(f'{value*100:.0f}%'))
+        preview.addLayout(preview_header);preview.addWidget(self.preview,1)
         self.info=label('','Muted');self.info.setWordWrap(True);preview.addWidget(self.info)
         self.note=label('Оформление сохраняется в изображениях, SVG, PDF, XLSX и HTML. CSV, TSV и JSON содержат данные без оформления.','Muted');self.note.setWordWrap(True);preview.addWidget(self.note)
         self.error_label=label('');self.error_label.setWordWrap(True);root.addWidget(self.error_label)
@@ -126,6 +135,7 @@ class ExportDialog(QDialog):
         if color.isValid():field.setText(color.name())
 
     def source_changed(self):
+        self.preview.fit_mode=True
         source=self.source();kind=source['kind'];self.title_edit.setText(source['title']);self.scope_combo.setEnabled(kind in ('table','topology'))
         self.scope_combo.blockSignals(True);self.scope_combo.clear()
         for key,title in ([('all','Вся топология'),('selected','Выбранный фрагмент')] if kind=='topology' else [('all','Все строки таблицы'),('selected','Только выделенные строки')]):self.scope_combo.addItem(title,key)
@@ -157,7 +167,7 @@ class ExportDialog(QDialog):
         try:
             data=self.data();data.validate();style=self.style()
             if data.kind=='topology' and self.format_combo.currentData() not in ('png','svg'):style=replace(style,transparent_background=False)
-            image=render_preview(data,style);self.preview.setPixmap(QPixmap.fromImage(image).scaled(self.preview.size(),Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
+            self.preview.set_content(data,style)
             self.info.setText(f'{len(data.nodes)} узлов, {len(data.links)} каналов. Вся схема вписывается в холст независимо от масштаба карты. SVG и PDF — векторные.' if data.kind=='topology' else f'{len(data.rows)} строк × {len(data.headers)} столбцов. Предпросмотр: первые 12 строк; в файле будет весь выбранный объём.' if data.kind=='table' else f'{len(data.series)} ряд(а), {sum(len(s["points"]) for s in data.series)} точек. SVG и PDF сохраняют векторные линии и текст.')
             self.error_label.clear();self.save_button.setEnabled(True)
         except Exception as e:self.preview.clear();self.error_label.setText(str(e));self.save_button.setEnabled(False)

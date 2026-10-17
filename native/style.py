@@ -137,6 +137,8 @@ def icon(kind, color='#9cacc1', size=22):
         p.drawLine(9,6,15,6);p.drawLine(6,9,6,18);p.drawLine(6,18,15,18)
     elif kind=='connect':
         p.drawEllipse(QRectF(2,8,6,6));p.drawEllipse(QRectF(16,8,6,6));p.drawLine(8,11,16,11)
+    elif kind=='help':
+        p.drawRoundedRect(QRectF(4,3,16,18),2,2);p.drawLine(8,7,16,7);p.drawLine(8,11,16,11);p.drawLine(8,15,13,15)
     elif kind=='brain':
         p.drawRoundedRect(QRectF(6,4,12,16),4,4)
         for y in (7,12,17):p.drawLine(3,y,6,y);p.drawLine(18,y,21,y)
