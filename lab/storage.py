@@ -77,3 +77,7 @@ def listing(kind):
     with connect() as db:
         rows=db.execute('SELECT id,name,created,payload FROM records WHERE kind=? ORDER BY created DESC LIMIT 100',(kind,)).fetchall()
     return [dict(id=r[0],name=r[1],created=r[2],summary=json.loads(r[3]).get('summary'),metadata=json.loads(r[3]).get('metadata')) for r in rows]
+
+
+def delete(kind,rid):
+    with connect() as db:db.execute('DELETE FROM records WHERE kind=? AND id=?',(kind,rid))

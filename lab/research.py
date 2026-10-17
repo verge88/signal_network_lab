@@ -21,7 +21,7 @@ def run(project, progress=None, cancel=None):
     p=checked(project)
     result=simulate(p,progress,cancel)
     checkpoint(cancel)
-    return storage.save('run',f'{p.name} · seed {p.seed} · events {len(p.incidents)}',dict(project=p.model_dump(),**result))
+    return storage.save('run',f'{p.name} · seed {p.seed} · events {len(p.incidents)} · атак {sum(a.enabled for a in p.attacks)}',dict(project=p.model_dump(),**result))
 
 
 def dataset(project, runs=12, name='Signaling telemetry', progress=None, cancel=None):
@@ -33,9 +33,12 @@ def dataset(project, runs=12, name='Signaling telemetry', progress=None, cancel=
         d['seed']=(d['seed']+1009*i)%2147483647
         rng=np.random.default_rng(d['seed'])
         d['incidents']=[]
+        d['attacks']=[]
         for f in d['flows']:f['rate']*=float(rng.uniform(.75,1.25))
         if i%2:
-            if p.incidents:d['incidents']=[e.model_dump() for e in p.incidents]
+            if p.incidents or any(a.enabled for a in p.attacks):
+                d['incidents']=[e.model_dump() for e in p.incidents]
+                d['attacks']=[a.model_dump() for a in p.attacks]
             else:
                 flow=d['flows'][i%len(d['flows'])]
                 from .procedures import ProcedureSimulation

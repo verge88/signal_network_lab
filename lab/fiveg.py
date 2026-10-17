@@ -146,7 +146,7 @@ class FiveGSimulation(ProcedureSimulation):
         if service and service not in (n.services or SERVICES.get(n.kind,[])):return 'nf_service_unavailable'
         if op=='5G PDU Session' and not self.registration_context(pr,frame['dst']).get('registered'):return 'not_registered'
         if op=='Nsmf UpdateSMContext' and not self.contexts.get(self.context_key(pr,frame['dst']),{}).get('sm_context'):return 'session_context_lost'
-        if self.rng.random()<n.error_rate:return 'protocol_error'
+        if self.rng.random()<self.application_error(n.id):return 'protocol_error'
         return 'success'
 
     def app_arrival(self,msg):

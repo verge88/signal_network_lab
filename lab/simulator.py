@@ -13,6 +13,7 @@ FEATURES = ['rate', 'delivery_ratio', 'latency_mean', 'latency_p95', 'loss_ratio
 
 
 def simulate(project: Project, progress=None, cancel=None):
+    if project.engine!='procedures' and any(a.enabled for a in project.attacks):raise ValueError('Конструктор атак требует движок процедур')
     if project.engine == 'procedures':
         if any(f.operation.startswith('5G ') for f in project.flows):
             from .fiveg import FiveGSimulation

@@ -12,7 +12,7 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import CancelledError
 import numpy as np
 
-ENGINE_VERSION = '2.3.0'
+ENGINE_VERSION = '2.4.0'
 CONTRACT = 'procedures-v2'
 ANSWERS = {'MAP UpdateLocation': 'MAP UpdateLocationResult',
            'MAP SendAuthenticationInfo': 'MAP AuthenticationInfoResult',
@@ -26,6 +26,11 @@ def percentile(values, q):
 
 class ProcedureSimulation:
     def __init__(self, project, progress=None, cancel=None):
+        from .attacks import compile_attacks
+        self.original_project=project
+        effects,origins=compile_attacks(project)
+        self.attack_origins={len(project.incidents)+i:origin for i,origin in enumerate(origins)}
+        project=project.model_copy(update={'incidents':[*project.incidents,*effects]})
         self.p = project
         self.progress, self.cancel = progress, cancel
         self.rng = np.random.default_rng(project.seed)
@@ -48,6 +53,7 @@ class ProcedureSimulation:
         self.running = defaultdict(dict)
         self.node_epoch = Counter()
         self.next_admission = defaultdict(float)
+        self.last_admission = {}
         self.wake = {}
         self.cache, self.subscribers = {}, {}
         self.wire, self.wire_queue = defaultdict(float), defaultdict(deque)
@@ -101,6 +107,25 @@ class ProcedureSimulation:
         if known and self.p.routing_knowledge=='distributed':return self.nodes[n].enabled and self.control.known(observer or self.p.flows[0].source,'node',n)
         return self.nodes[n].enabled and not any(self.incident_matches(e, ('node_down', 'node_restart'), n, t, known=known) for e in self.p.incidents)
 
+    def effect_value(self,kind,target,t,baseline=1.,minimum=False):
+        values=[baseline]+[e.magnitude for e in self.p.incidents if self.incident_matches(e,(kind,),target,t)]
+        return min(values) if minimum else max(values)
+
+    def application_error(self,target):
+        return self.effect_value('node_error',target,self.t,self.nodes[target].error_rate)
+
+    def attack_boundary(self,n):
+        if n in self.last_admission:self.next_admission[n]=self.last_admission[n]+1000/self.admission_capacity(n)
+        self.dispatch(n)
+
+    def admission_capacity(self,n):
+        node=self.nodes[n];ramp=1.
+        for e in self.p.incidents:
+            if e.target==n and e.kind in ('node_down','node_restart') and node.recovery_ramp_ms:
+                start=(e.start+e.duration)*1000+(e.recovery_ms if e.recovery_ms is not None else node.recovery_ms)
+                if start<=self.t<start+node.recovery_ramp_ms:ramp=min(ramp,max(.1,(self.t-start)/node.recovery_ramp_ms))
+        return node.capacity*ramp*self.effect_value('node_capacity',n,self.t,minimum=True)
+
     def link_up(self, lid, src, t, known=False,observer=None,management=False):
         l = self.links[lid]
         direction = 'forward' if src == l.source else 'reverse'
@@ -112,9 +137,12 @@ class ProcedureSimulation:
         if self.p.control_plane and not management and lid in self.control.states and self.control.states[lid]['state']!='OPEN':return False
         return not any(self.incident_matches(e, ('link_down',), lid, t, direction, known, l) for e in self.p.incidents)
 
-    def touch(self, pr, target, direction='both'):
+    def touch(self, pr, target, direction='both',resource=None):
+        from .attacks import NODE_EFFECTS
+        resource=resource or ('node' if direction=='both' else 'link')
         pr['objects'].add(target)
         for i, e in enumerate(self.p.incidents):
+            if resource!=('node' if e.kind in NODE_EFFECTS else 'flow' if e.kind=='surge' else 'link'):continue
             if e.target == target and (e.direction == 'both' or e.direction == direction) and e.start*1000 <= self.t < (e.start+e.duration)*1000:
                 pr['affected'].add(i)
                 if self.t<self.p.duration*1000 and not pr.get('control'):
@@ -224,6 +252,9 @@ class ProcedureSimulation:
                 states = [('CONNECTING', 0), (handshake.get(l.protocol,'DATA_PATH_START'), l.startup_ms/2), ('ASP_ACTIVE / AS_ACTIVE' if l.protocol=='M3UA' else 'OPEN', l.startup_ms)]
                 for state, t in states: self.lifecycle.append(dict(time=t/1000, object=lid, state=state))
         for i, e in enumerate(self.p.incidents):
+            if e.kind=='node_capacity' and e.magnitude<1:
+                self.push(e.start*1000,'attack_boundary',e.target,0)
+                self.push((e.start+e.duration)*1000,'attack_boundary',e.target,0)
             if e.kind not in ('node_down', 'node_restart', 'link_down'): continue
             l = self.links.get(e.target)
             resource=l or self.nodes[e.target]
@@ -266,7 +297,7 @@ class ProcedureSimulation:
         self.procedures[ident] = pr
         self.outstanding += 1; self.max_outstanding = max(self.max_outstanding, self.outstanding)
         self.buckets[self.window(self.t)]['sent'] += 1
-        self.touch(pr, f.id)
+        self.touch(pr, f.id,resource='flow')
         self.send_attempt(pr)
 
     def send_attempt(self, pr):
@@ -356,14 +387,11 @@ class ProcedureSimulation:
                 sigma = math.sqrt(math.log1p(node.service_cv**2)); service = self.rng.lognormal(math.log(mean)-sigma*sigma/2, sigma)
             else: service = mean
             if application_work and self.rng.random()>=node.cache_hit_ratio: service += node.database_ms
-            service = max(.0001, float(service))
+            service = max(.0001, float(service))*self.effect_value('node_delay',n,self.t)
+            self.touch(self.procedures[msg['procedure']],n)
             done = self.t+service
-            ramp=1.
-            for e in self.p.incidents:
-                if e.target==n and e.kind in ('node_down','node_restart') and node.recovery_ramp_ms:
-                    start=(e.start+e.duration)*1000+(e.recovery_ms if e.recovery_ms is not None else node.recovery_ms)
-                    if start<=self.t<start+node.recovery_ramp_ms:ramp=min(ramp,max(.1,(self.t-start)/node.recovery_ramp_ms))
-            self.next_admission[n] = self.t+1000/(node.capacity*ramp)
+            self.last_admission[n]=self.t
+            self.next_admission[n] = self.t+1000/self.admission_capacity(n)
             self.running[n][msg['id']] = (msg, self.t, done, self.node_epoch[n])
             self.push(done, 'node_done', (n, msg['id'], self.node_epoch[n], arrival))
 
@@ -460,7 +488,7 @@ class ProcedureSimulation:
         s['bytes'] += size; ds['bytes'] += size
         loss = l.reverse_loss if direction=='reverse' and l.reverse_loss is not None else l.loss
         factor = max((e.magnitude for e in self.p.incidents if self.incident_matches(e, ('loss',), lid, tx, direction)),default=1)
-        loss = min(1.,loss*factor)
+        loss = max([min(1.,loss*factor)]+[e.magnitude for e in self.p.incidents if self.incident_matches(e,('loss_absolute',),lid,tx,direction)])
         probability = loss+l.loss_correlation*(1-loss) if self.loss_last[key] else loss*(1-l.loss_correlation)
         dropped = self.rng.random()<probability
         self.loss_last[key] = dropped
@@ -582,7 +610,7 @@ class ProcedureSimulation:
                 kind=self.nodes[dst].kind
                 if (msg['operation'].startswith('MAP') and kind not in ('HLR','SCP')) or (msg['operation'] in ('Diameter AIR','Diameter ULR') and kind!='HSS') or (msg['operation']=='ISUP IAM' and kind!='MSC'):result='unsupported_service'
                 elif f.procedure=='registration' and msg['step']>0 and state not in ('authenticated','registered'): result='session_state_lost'
-                elif self.rng.random()<self.nodes[dst].error_rate: result='protocol_error'
+                elif self.rng.random()<self.application_error(dst): result='protocol_error'
                 if result=='success':
                     if 'Authentication' in msg['operation'] or msg['operation']=='Diameter AIR': self.subscribers[state_key]='authenticated'
                     elif 'UpdateLocation' in msg['operation'] or msg['operation']=='Diameter ULR': self.subscribers[state_key]='registered'
@@ -644,6 +672,7 @@ class ProcedureSimulation:
             elif kind=='node_done': self.node_done(*data)
             elif kind=='node_fault': self.node_fault(*data)
             elif kind=='wake': self.wake.pop(data,None); self.dispatch(data)
+            elif kind=='attack_boundary':self.attack_boundary(data)
             elif kind=='packet_rx': self.packet_rx(*data)
             elif kind=='packet_timeout': self.packet_timeout(*data)
             elif kind=='ack': self.ack(*data)
@@ -653,7 +682,30 @@ class ProcedureSimulation:
             elif kind.startswith('user_'):self.user_plane.event(kind,data)
             if self.steps>12000000: raise ValueError('Превышен лимит 12 млн событий; уменьшите нагрузку, размеры или число повторов')
         result=self.report();result['control_plane']=self.control.report()
+        result['config_sha256']=hashlib.sha256(json.dumps(self.original_project.model_dump(),sort_keys=True).encode()).hexdigest()
+        result['attacks']=self.report_attacks()
+        for i,origin in self.attack_origins.items():result['incidents'][i].update(origin)
+        for row in result['windows']:
+            lo=row['time'];hi=min(self.p.duration,lo+self.p.window)
+            row['scheduled_attacks']=sorted({o['attack_id'] for i,o in self.attack_origins.items() if self.p.incidents[i].start<hi and self.p.incidents[i].start+self.p.incidents[i].duration>lo})
         return result
+
+    def report_attacks(self):
+        reports=[]
+        for a in self.original_project.attacks:
+            indices={i for i,o in self.attack_origins.items() if o['attack_id']==a.id}
+            impacted=[p for p in self.procedures.values() if not p.get('control') and p['affected'] & indices]
+            steps=[]
+            for s in a.steps:
+                step_indices={i for i in indices if self.attack_origins[i]['step_id']==s.id}
+                steps.append(dict(id=s.id,name=s.name,target=s.target,effect=s.effect,affected_procedures=sum(bool(p['affected'] & step_indices) for p in impacted)))
+            reports.append(dict(id=a.id,name=a.name,enabled=a.enabled,start=a.start,end=a.start+(a.repeats-1)*a.interval+max(s.offset+s.duration for s in a.steps),intervals=len(indices),affected_procedures=len(impacted),successful=sum(p.get('status')=='delivered' for p in impacted),failed=sum(p.get('status')!='delivered' for p in impacted),retries=sum(p['retries'] for p in impacted),transport_retries=sum(p['transport_retries'] for p in impacted),steps=steps))
+        for trace in self.traces:
+            trace['affected_attacks']=sorted({self.attack_origins[i]['attack_id'] for i in trace['affected_incidents'] if i in self.attack_origins})
+        for trace in self.message_traces:
+            pr=self.procedures.get(trace['procedure_id'])
+            trace['affected_attacks']=sorted({self.attack_origins[i]['attack_id'] for i in pr['affected'] if i in self.attack_origins}) if pr else []
+        return reports
 
     def report(self):
         from .simulator import FEATURES

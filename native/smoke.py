@@ -101,7 +101,7 @@ class SmokeTest(QObject):
                 w.set_overview_height(125);w.show_page(0);self.app.processEvents()
             assert json.dumps(w.project,sort_keys=True)==project
             assert w.selected==selection and w.undo.count()==undo_count
-            self.completed.append('pure-black and light monochrome themes, neutral rendering on all six pages including the handbook and saved theme')
+            self.completed.append('pure-black and light monochrome themes, neutral rendering on all seven pages including the handbook and attack designer and saved theme')
             self.completed.append('collapsible sidebar, icon navigation, tooltips, menu toggle and persisted state across all themes')
             self.completed.append('compact overview, real mouse resizing, numeric height dialog, saved height and page-switch restoration across all themes')
         finally:
@@ -115,6 +115,7 @@ class SmokeTest(QObject):
             self.completed.append('Python cyclic collection is scheduled on the GUI thread; automatic collection in simulation workers is disabled')
             self.verify_protocol_regressions()
             self.verify_handbook()
+            self.verify_attacks()
             self.verify_expanded_topology()
             self.verify_mouse_links()
             # Exercise native forms and all page construction paths.
@@ -131,6 +132,40 @@ class SmokeTest(QObject):
             w.job_completed.connect(self.next_stage)
             w.start_run()
         except Exception as e:self.fail(e)
+    def verify_attacks(self):
+        from lab.schema import Project
+        from lab.attacks import PRESETS,from_preset,decode_template
+        from lab.presets import preset
+        from .attacks import AttackEditor,StepEditor
+        w=self.window;page=w.attacks_widget;before=json.dumps(w.project,sort_keys=True);history=w.undo.index();theme=w.theme
+        try:
+            p=Project.model_validate(w.project);scenario=from_preset(p,'compound').model_dump()
+            dialog=AttackEditor(w,w.project,scenario);dialog.show();self.app.processEvents()
+            assert dialog.buttons.button(dialog.buttons.StandardButton.Ok).isEnabled()
+            dialog.clone_step();assert len(dialog.steps)==4;dialog.remove_step();assert len(dialog.steps)==3
+            step=StepEditor(dialog,w.project);step.effect.setCurrentIndex(step.effect.findData('loss_absolute'));step.target.setCurrentIndex(0);step.magnitude.setValue(.25);step.profile.setCurrentIndex(step.profile.findData('pulse'));step.accept();assert step.result_data['magnitude']==.25 and step.result_data['profile']=='pulse';step.deleteLater()
+            for mode in ('dark','monochrome','light_monochrome'):
+                w.apply_theme(mode,persist=False);dialog.show();self.app.processEvents()
+                if self.output:dialog.grab().save(str(self.output/f'{mode}-attack-editor.png'))
+            dialog.accept();page.store(dialog.result_data);dialog.deleteLater()
+            assert len(w.project['attacks'])==1;page.clone_selected();assert len(w.project['attacks'])==2
+            page.toggle_selected();assert not page.selected()['enabled'];w.undo.undo();assert page.selected()['enabled']
+            page.save_template();assert page.saved.count()>0
+            saved=storage.listing('attack_template')[0];loaded=decode_template(storage.get('attack_template',saved['id'])['template']);assert loaded.steps
+            storage.delete('attack_template',saved['id']);page.reload_templates()
+            config=preset('5g').model_dump();config['duration']=10
+            for f in config['flows']:f['rate']=.3
+            config['attacks']=[from_preset(Project.model_validate(config),'5g_registration').model_dump(),from_preset(Project.model_validate(config),'sbi_exhaustion').model_dump()]
+            w.mutate('Проверка конструктора 5G',lambda p:p.update(config));record=research.run(w.project)
+            w.run_record=record;w.refresh_measurements();assert page.report_table.rowCount()==2
+            for mode in ('dark','monochrome','light_monochrome'):
+                w.apply_theme(mode,persist=False);w.show_page(6);self.app.processEvents();page.tabs.setCurrentIndex(0);self.capture(f'{mode}-attack-builder');page.tabs.setCurrentIndex(2);self.capture(f'{mode}-attack-report')
+            assert len(PRESETS)==12 and len(w.export_sources())==27
+            self.completed.append('attack builder: 12 presets, custom step/profile editing, native timeline and reports in all themes, clone/toggle/undo, local templates, 5G effects and styled table export sources')
+        finally:
+            while w.undo.index()>history:w.undo.undo()
+            assert json.dumps(w.project,sort_keys=True)==before
+            w.run_record=None;page.refresh_report();w.apply_theme(theme,persist=False);w.show_page(0)
     def verify_startup(self):
         from .startup import StartupSplash
         state=self.app.startup_state
@@ -160,7 +195,7 @@ class SmokeTest(QObject):
         w.show_page(0);w.set_topology_expanded(True);w.activateWindow();w.graph.setFocus();self.app.processEvents();QTest.keyClick(w.graph,Qt.Key.Key_F1);self.app.processEvents()
         assert w.pages.currentIndex()==5 and not w.topology_expanded
         w.show_help('Начало работы');w.show_page(0)
-        self.completed.append('offline handbook: 25 chapters, all node/protocol glossary entries, full-text Cyrillic search, no-results recovery, F1 from expanded topology and native help navigation')
+        self.completed.append('offline handbook: 26 chapters, all node/protocol glossary entries, full-text Cyrillic search, no-results recovery, F1 from expanded topology and native help navigation')
     def verify_expanded_topology(self):
         from lab.schema import NODE_KINDS
         w=self.window;original=json.dumps(w.project,sort_keys=True);selection=w.selected;theme=w.theme;settings=w.settings;size=w.size()
@@ -305,7 +340,7 @@ class SmokeTest(QObject):
         export_ui.QFileDialog=TestFileDialog
         try:
             w.settings=QSettings(str(storage.DATA/'export-self-test.ini'),QSettings.Format.IniFormat)
-            assert len(w.export_sources())==25
+            assert len(w.export_sources())==27
             for theme in ('monochrome','light_monochrome','dark'):
                 w.apply_theme(theme,persist=False)
                 dialog=ExportDialog(w,w.export_sources(),'telemetry_chart');dialog.show();self.app.processEvents();dialog.refresh_preview()

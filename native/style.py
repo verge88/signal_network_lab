@@ -115,6 +115,9 @@ def icon(kind, color='#9cacc1', size=22):
         'sidebar-expand':[(9,5),(16,12),(9,19)],
         'restore':[(9,9),(9,3),(21,3),(21,15),(15,15)],
         'close':[(5,5),(19,19)],
+        'shield':[(12,2),(21,6),(20,14),(17,19),(12,22),(7,19),(4,14),(3,6),(12,2)],
+        'copy':[(9,3),(21,3),(21,15),(17,15),(17,8),(9,8),(9,3),(9,8),(3,8),(3,21),(17,21),(17,8)],
+        'export':[(11,13),(21,3),(15,3),(21,3),(21,9)],
     }
     if kind in paths:
         points=paths[kind]
@@ -129,6 +132,8 @@ def icon(kind, color='#9cacc1', size=22):
         if kind=='fit':
             p.drawLine(15,3,21,3);p.drawLine(21,3,21,9);p.drawLine(3,15,3,21);p.drawLine(3,21,9,21);p.drawLine(15,21,21,21);p.drawLine(21,21,21,15)
         if kind=='save':p.drawRect(7,3,9,6);p.drawRect(7,14,10,7)
+        if kind=='shield':p.drawLine(12,7,12,13);p.drawPoint(12,17)
+        if kind=='export':p.drawLine(9,4,3,4);p.drawLine(3,4,3,21);p.drawLine(3,21,20,21);p.drawLine(20,21,20,15)
         if kind=='trash':p.drawLine(3,6,21,6);p.drawLine(9,3,15,3)
         if kind in ('undo','redo'):p.drawArc(QRectF(5,8,14,11),-150*16,230*16)
         if kind=='settings':p.drawLine(4,17,20,17);p.drawEllipse(8,4,6,6);p.drawEllipse(13,14,6,6)

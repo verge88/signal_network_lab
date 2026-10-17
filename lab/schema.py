@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 NODE_KINDS=['MSC','STP','SG','HLR','MME','DRA','HSS','SCP','gNB','AMF','SMF','UPF','AUSF','UDM','UDR','PCF','NRF','NSSF','SCP5G','DN']
 LINK_PROTOCOLS=['SS7','M3UA','Diameter','NGAP','SBI','PFCP','GTPU','IP']
@@ -139,14 +139,69 @@ class Flow(BaseModel):
 
 
 class Incident(BaseModel):
-    kind: Literal['node_down', 'node_restart', 'link_down', 'surge', 'latency', 'loss']
+    kind: Literal['node_down', 'node_restart', 'link_down', 'surge', 'latency', 'loss', 'loss_absolute', 'node_capacity', 'node_delay', 'node_error']
     target: str
-    start: float = Field(default=20, ge=0, le=599)
+    start: float = Field(default=20, ge=0, le=600)
     duration: float = Field(default=20, gt=0, le=600)
     magnitude: float = Field(default=3, ge=0, le=100)
     direction: Literal['both', 'forward', 'reverse'] = 'both'
     detection_ms: float | None = Field(default=None, ge=0, le=30000)
     recovery_ms: float | None = Field(default=None, ge=0, le=30000)
+
+    @model_validator(mode='after')
+    def effect_bounds(self):
+        if self.kind in ('loss_absolute','node_error') and self.magnitude>1:raise ValueError('Вероятность должна быть от 0 до 1')
+        if self.kind=='node_capacity' and not .01<=self.magnitude<=1:raise ValueError('Оставшаяся мощность: 0,01–1')
+        if self.kind=='node_delay' and self.magnitude<1:raise ValueError('Множитель обработки должен быть не меньше 1')
+        if self.kind in ('node_capacity','node_delay','node_error') and self.direction!='both':raise ValueError('Направление применяется только к каналу')
+        return self
+
+
+class AttackStep(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+    id: str = Field(min_length=1, max_length=50, pattern=r'^[\w-]+$')
+    name: str = Field(default='Этап', min_length=1, max_length=100)
+    effect: Literal['surge','latency','loss_absolute','node_capacity','node_delay','node_error','node_down','node_restart','link_down'] = 'surge'
+    target: str = Field(min_length=1, max_length=50)
+    offset: float = Field(default=0, ge=0, le=599)
+    duration: float = Field(default=10, gt=0, le=600)
+    magnitude: float = Field(default=3, ge=0, le=100)
+    direction: Literal['both','forward','reverse'] = 'both'
+    profile: Literal['constant','ramp','pulse'] = 'constant'
+    period: float = Field(default=2, ge=.1, le=600)
+    duty: float = Field(default=.5, ge=.05, le=.95)
+
+    @model_validator(mode='after')
+    def bounds(self):
+        if self.effect in ('surge','latency','node_delay') and self.magnitude<1:
+            raise ValueError('Множитель нагрузки или задержки должен быть не меньше 1')
+        if self.effect in ('loss_absolute','node_error') and self.magnitude>1:
+            raise ValueError('Вероятность задаётся в диапазоне 0–1')
+        if self.effect=='node_capacity' and not .01<=self.magnitude<=1:
+            raise ValueError('Оставшаяся мощность узла: от 0,01 до 1')
+        if self.effect in ('node_down','node_restart','link_down') and self.profile!='constant':
+            raise ValueError('Для отказов и перезапусков используйте постоянный профиль и повторы сценария')
+        if self.effect not in ('latency','loss_absolute','link_down') and self.direction!='both':
+            raise ValueError('Направление применяется только к каналу')
+        if self.profile=='pulse' and self.duration/self.period>512:raise ValueError('Слишком частые импульсы: увеличьте период')
+        return self
+
+
+class AttackScenario(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+    id: str = Field(min_length=1, max_length=50, pattern=r'^[\w-]+$')
+    name: str = Field(default='Собственный сценарий', min_length=1, max_length=100)
+    description: str = Field(default='', max_length=2000)
+    enabled: bool = True
+    start: float = Field(default=10, ge=0, le=599)
+    repeats: int = Field(default=1, ge=1, le=10)
+    interval: float = Field(default=20, ge=.1, le=600)
+    steps: list[AttackStep] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode='after')
+    def unique_steps(self):
+        if len({s.id for s in self.steps})!=len(self.steps):raise ValueError('ID этапов должны быть уникальными')
+        return self
 
 
 class Project(BaseModel):
@@ -155,6 +210,7 @@ class Project(BaseModel):
     links: list[Link] = Field(max_length=150)
     flows: list[Flow] = Field(min_length=1, max_length=30)
     incidents: list[Incident] = Field(default_factory=list, max_length=30)
+    attacks: list[AttackScenario] = Field(default_factory=list, max_length=20)
     duration: int = Field(default=60, ge=10, le=600)
     seed: int = Field(default=42, ge=0, le=2147483647)
     window: int = Field(default=5, ge=1, le=30)
@@ -178,8 +234,20 @@ class Project(BaseModel):
             for x in group:
                 if x.source not in ids or x.target not in ids or x.source == x.target:
                     raise ValueError('Некорректные конечные узлы связи/потока')
-        for e in self.incidents:
-            targets = ids if e.kind in ('node_down', 'node_restart') else {f.id for f in self.flows} if e.kind == 'surge' else {l.id for l in self.links}
+        from .attacks import compile_attacks, NODE_EFFECTS
+        if len({a.id for a in self.attacks})!=len(self.attacks):raise ValueError('ID атак должны быть уникальными')
+        if any(a.enabled for a in self.attacks) and self.engine!='procedures':raise ValueError('Конструктор атак требует движок процедур')
+        if self.engine!='procedures' and any(e.kind in ('loss_absolute','node_capacity','node_delay','node_error') for e in self.incidents):raise ValueError('Дополнительные эффекты требуют движок процедур')
+        for a in self.attacks:
+            for s in a.steps:
+                targets=ids if s.effect in NODE_EFFECTS else {f.id for f in self.flows} if s.effect=='surge' else {l.id for l in self.links}
+                if s.target not in targets:raise ValueError(f'Атака «{a.name}»: не найдена цель {s.target}')
+            if a.enabled and a.start+(a.repeats-1)*a.interval+max(s.offset+s.duration for s in a.steps)>self.duration+1e-9:
+                raise ValueError(f'Атака «{a.name}» выходит за длительность эксперимента')
+        compiled,_=compile_attacks(self)
+        events=[*self.incidents,*compiled]
+        for e in events:
+            targets = ids if e.kind in NODE_EFFECTS else {f.id for f in self.flows} if e.kind == 'surge' else {l.id for l in self.links}
             if e.target not in targets:
                 raise ValueError('Не найден объект сценария: ' + e.target)
             if e.start >= self.duration:
@@ -199,7 +267,7 @@ class Project(BaseModel):
                 for kind,nid in f.nf_bindings.items():
                     if nid not in by_id or by_id[nid].kind!=kind:raise ValueError('Привязка NF должна указывать на узел соответствующего типа')
         max_rate = sum(f.rate * (1 + f.profile_amplitude) * (3 if f.traffic_profile=='bursty' else 1) for f in self.flows)
-        surge = max([e.magnitude for e in self.incidents if e.kind == 'surge'] + [1])
+        surge = max([e.magnitude for e in events if e.kind == 'surge'] + [1])
         if max_rate * self.duration * max(1, surge) > 350000:
             raise ValueError('Слишком большой эксперимент: уменьшите длительность или интенсивность (лимит 350 000 сообщений)')
         if self.engine=='procedures' and sum(f.rate*(1+f.max_retries)*(32 if f.operation=='5G Registration + PDU Session' else 16 if f.operation in FIVEG_OPERATIONS else 2 if f.procedure=='registration' else 1) for f in self.flows)*self.duration*max(1,surge)>700000:

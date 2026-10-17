@@ -5,7 +5,7 @@ from .widgets import spin, combo
 from .node_icons import node_kind_combo
 
 KINDS=NODE_KINDS
-INCIDENTS=[('node_down','Отказ узла'),('node_restart','Перезапуск и потеря состояния'),('link_down','Разрыв канала'),('surge','Всплеск нагрузки'),('latency','Изменение задержки'),('loss','Изменение потерь')]
+INCIDENTS=[('node_down','Отказ узла'),('node_restart','Перезапуск и потеря состояния'),('link_down','Разрыв канала'),('surge','Всплеск нагрузки'),('latency','Изменение задержки'),('loss','Изменение потерь'),('loss_absolute','Вероятность потери'),('node_capacity','Оставшаяся мощность'),('node_delay','Замедление обработки'),('node_error','Ошибки приложения')]
 
 
 class Editor(QDialog):
@@ -127,12 +127,15 @@ def incident_editor(parent,project,incident=None):
     target=d.field('target','Объект воздействия',combo([]))
     def targets():
         kind=k.currentData()
-        items=project['nodes'] if kind in ('node_down','node_restart') else project['flows'] if kind=='surge' else project['links']
+        items=project['nodes'] if kind in ('node_down','node_restart','node_capacity','node_delay','node_error') else project['flows'] if kind=='surge' else project['links']
         target.clear()
         for item in items:target.addItem(item.get('name',item['id']),item['id'])
         idx=target.findData(e['target'])
         if idx>=0:target.setCurrentIndex(idx)
         d.fields['magnitude'].setEnabled(kind not in ('node_down','node_restart','link_down'))
+        d.fields['magnitude'].setRange(.01 if kind=='node_capacity' else 1 if kind=='node_delay' else 0,1 if kind in ('node_capacity','node_error','loss_absolute') else 100)
+        channel=kind in ('link_down','latency','loss','loss_absolute');d.fields['direction'].setEnabled(channel)
+        if not channel:d.fields['direction'].setCurrentIndex(0)
     d.field('start','Начало',spin(e['start'],0,project['duration']-.01,2,'s'))
     d.field('duration','Длительность',spin(e['duration'],.01,600,2,'s'))
     d.field('magnitude','Множитель',spin(e['magnitude'],0,100,2))

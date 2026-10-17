@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QFrame,QHBoxLayo
 from lab import storage, research, ml
 from lab.presets import preset
 from lab.schema import Project, Node, NODE_KINDS, LINK_PROTOCOLS
+from lab.attacks import NODE_EFFECTS
 from .style import icon, THEMES, set_theme, saved_theme, themed_color, themed_stylesheet, stylesheet, application_palette
 from .widgets import label, button, row, panel, table, populate, spin, combo, Metric, Chart
 from .graph import NetworkView
@@ -32,6 +33,7 @@ def timestamp(s):
     except ValueError:return s
 def fingerprint(p):
     q=copy.deepcopy(p)
+    q.setdefault('attacks',[])
     for n in q['nodes']:n.pop('x',None);n.pop('y',None)
     return json.dumps(q,sort_keys=True)
 
@@ -102,14 +104,14 @@ class MainWindow(QMainWindow):
             b.setProperty('expandedText',b.text());b.setToolTip(title);b.setAccessibleName(title);self.sidebar_buttons.append(b);sl.addWidget(b)
         gap(24,8);section('  ЛАБОРАТОРИЯ');gap(5,0)
         self.nav_buttons=[]
-        nav=[('Топология','topology'),('Эксперименты','experiment'),('Телеметрия','chart'),('ML-детекторы','brain'),('Результаты','history'),('Справка','help')]
+        nav=[('Топология','topology'),('Эксперименты','experiment'),('Телеметрия','chart'),('ML-детекторы','brain'),('Результаты','history'),('Справка','help'),('Атаки','shield')]
         for i,(text,ico) in enumerate(nav):
             b=button('  '+text,None,ico);b.setObjectName('Nav');b.setCheckable(True);b.setChecked(i==0);b.clicked.connect(lambda checked=False,index=i:self.show_page(index));sidebar_button(b,text);self.nav_buttons.append(b)
         gap(24,16);section('  РАБОЧЕЕ ПРОСТРАНСТВО');gap(5,0)
         for text,fn,ico in [('Открыть проект',self.open_project,'folder'),('Сохранить проект',self.save_project,'save')]:
             b=self.action_button(text,fn,ico);b.setObjectName('Nav');sidebar_button(b,text)
         sl.addStretch();about=self.action_button('О модели лаборатории',self.about,'settings');about.setObjectName('Nav');sidebar_button(about,'О модели лаборатории')
-        offline=label('●  OFFLINE ENGINE   /   v2.6','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
+        offline=label('●  OFFLINE ENGINE   /   v2.7','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
         root.addWidget(side)
         right=QWidget();self.workspace_right=right;rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0);root.addWidget(right,1)
         body=QWidget();bl=QVBoxLayout(body);bl.setContentsMargins(13,8,13,10);bl.setSpacing(12);rl.addWidget(body,1)
@@ -127,6 +129,8 @@ class MainWindow(QMainWindow):
         grip_layout=QHBoxLayout(handle);grip_layout.setContentsMargins(0,0,0,0);grip=QFrame();grip.setObjectName('OverviewGrip');grip.setFixedSize(44,2);grip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents);grip_layout.addWidget(grip,alignment=Qt.AlignmentFlag.AlignCenter)
         self.workspace_split.splitterMoved.connect(self.overview_resized)
         self.pages.addWidget(self.topology_page());self.pages.addWidget(self.experiments_page());self.pages.addWidget(self.telemetry_page());self.pages.addWidget(self.ml_page());self.pages.addWidget(self.results_page());self.pages.addWidget(self.help_page())
+        from .attacks import AttacksPage
+        self.attacks_widget=AttacksPage(self);attacks_scroll=QScrollArea();attacks_scroll.setWidgetResizable(True);attacks_scroll.setWidget(self.attacks_widget);self.pages.addWidget(attacks_scroll)
         self.job_bar=QFrame();self.job_bar.setObjectName('Toolbar');jl=QHBoxLayout(self.job_bar);jl.setContentsMargins(15,8,15,8);self.job_label=label('');jl.addWidget(self.job_label)
         self.progress=QProgressBar();self.progress.setRange(0,100);self.progress.setFixedWidth(240);self.progress.setTextVisible(False);jl.addWidget(self.progress);self.elapsed=label('0 с','Muted');jl.addWidget(self.elapsed)
         self.cancel_button=self.action_button('Отменить',self.cancel_job,'stop');jl.addWidget(self.cancel_button);self.job_bar.hide();bl.addWidget(self.job_bar)
@@ -155,6 +159,7 @@ class MainWindow(QMainWindow):
         templates=view.addMenu('Шаблоны топологии')
         for name,key in [('Гибридное ядро','hybrid'),('SS7 / SIGTRAN','ss7'),('Diameter EPC','diameter'),('5G SA / Service-Based Core','5g')]:self.menu_action(templates,name,lambda p=key:self.new_project(p))
         self.menu_action(research_menu,'Запустить эксперимент',self.start_run,'F5');self.menu_action(research_menu,'Отменить / выйти из режима карты',self.escape_action,'Escape');self.menu_action(research_menu,'Сформировать ML-датасет',self.generate_dataset)
+        self.menu_action(research_menu,'Конструктор атак',lambda:self.show_page(6),'Ctrl+Shift+A')
         self.help_action=self.menu_action(help_menu,'Руководство пользователя',self.show_help,'F1')
         self.menu_action(help_menu,'Основы сигнальных сетей',lambda:self.show_help('Основы сигнальных сетей'))
         self.menu_action(help_menu,'Словарь сокращений',lambda:self.show_help('Словарь сокращений'))
@@ -176,6 +181,7 @@ class MainWindow(QMainWindow):
         self.graph.refresh_theme()
         if self.expanded_workspace:self.expanded_workspace.refresh_icons()
         self.help_widget.refresh_theme()
+        self.attacks_widget.timeline.update()
         for chart in self.findChildren(Chart):chart.update()
         for key,action in self.theme_actions.items():action.setChecked(key==name)
         if persist:self.settings.setValue('theme',name);self.settings.sync();self.statusBar().showMessage('Тема: '+THEMES[name],6000)
@@ -186,6 +192,8 @@ class MainWindow(QMainWindow):
             record=self.model_record if key in ('roc_chart','pr_chart') else self.run_record
             sources.append(dict(key=key,title=title,kind='chart',widget=getattr(self,key),x_label=x,y_label=y,metadata=dict(record_id=record.get('id') if record else None)))
         sources.append(dict(key='topology',title='Топология · '+self.project['name'],kind='topology',widget=self.graph,metadata=dict(project_name=self.project['name'])))
+        sources.append(dict(key='attacks_table',title='Конструктор атак · этапы',kind='table',widget=self.attacks_widget.steps_table))
+        sources.append(dict(key='attacks_report',title='Конструктор атак · отчёт прогона',kind='table',widget=self.attacks_widget.report_table))
         for key,title in [('flows_table','Сигнальные потоки'),('incidents_table','События сценария'),('sweep_table','Параметрическое исследование'),('calibration_table','Калибровка'),('trace_table','Транзакции · текущий фильтр'),('lifecycle_table','Отказы и состояния'),('procedure_table','Процедуры'),('transport_table','Транспорт'),('message_table','Запросы и ответы'),('fiveg_table','5G · NF / сервисы'),('control_table','Управляющий обмен'),('routing_state_table','Представления маршрутизаторов'),('user_plane_table','5G · пользовательские пакеты'),('confusion','Матрица ошибок'),('importance','Важность признаков'),('prediction_table','Применение детектора'),('runs_table','Библиотека прогонов'),('comparison','Сравнение прогонов'),('projects_table','Библиотека проектов'),('series_table','Библиотека серий')]:
             sources.append(dict(key=key,title=title,kind='table',widget=getattr(self,key)))
         return sources
@@ -199,7 +207,7 @@ class MainWindow(QMainWindow):
         menu=QMenu(self);self.menu_action(menu,'Экспорт с оформлением…',lambda:self.export_visuals(key));origin=widget.viewport() if hasattr(widget,'viewport') else widget;menu.exec(origin.mapToGlobal(point))
     def export_visuals(self,key=None):
         from .export_dialog import ExportDialog
-        key=key or ('topology','flows_table','telemetry_chart','roc_chart','runs_table','topology')[self.pages.currentIndex()]
+        key=key or ('topology','flows_table','telemetry_chart','roc_chart','runs_table','topology','attacks_table')[self.pages.currentIndex()]
         dialog=ExportDialog(self,self.export_sources(),key);dialog.exec();dialog.deleteLater()
     def toggle_sidebar(self):self.set_sidebar_collapsed(not self.sidebar_collapsed)
     def set_sidebar_collapsed(self,collapsed,persist=True):
@@ -313,6 +321,7 @@ class MainWindow(QMainWindow):
         for text,fn,ico in [('Добавить',lambda:self.edit_flow(False),'plus'),('Изменить',lambda:self.edit_flow(True),'settings'),('Удалить',self.delete_flow,'trash')]:fh.addWidget(self.action_button(text,fn,ico))
         self.flows_table=table(['Источник → назначение','Протокол','Операция','msg/s','Размер, B','Тайм-аут, ms']);self.flows_table.setMinimumHeight(185);self.flows_table.setMaximumHeight(270);self.flows_table.doubleClicked.connect(lambda idx:self.call(self.edit_flow,True));fc.addWidget(self.flows_table);l.addWidget(flows)
         incidents,ic,ih=panel('События сценария','Отказы и изменения нагрузки, задержки и потерь по времени. События действуют на [начало, конец).')
+        ih.addWidget(self.action_button('Конструктор атак',lambda:self.show_page(6),'shield'))
         for text,fn,ico in [('Запланировать',lambda:self.edit_incident(False),'plus'),('Изменить',lambda:self.edit_incident(True),'settings'),('Удалить',self.delete_incident,'trash')]:ih.addWidget(self.action_button(text,fn,ico))
         self.incidents_table=table(['Событие','Объект','Начало, s','Длительность, s','Множитель']);self.incidents_table.setMinimumHeight(145);self.incidents_table.setMaximumHeight(230);self.incidents_table.doubleClicked.connect(lambda idx:self.call(self.edit_incident,True));ic.addWidget(self.incidents_table);l.addWidget(incidents)
         sweep,sc,sh=panel('Параметрическое исследование','Сопоставленные seed между уровнями нагрузки. Среднее ± приближённый 95% интервал; при малом числе повторов интервал ориентировочный.')
@@ -390,7 +399,7 @@ class MainWindow(QMainWindow):
         if self.topology_expanded and index!=0:self.set_topology_expanded(False)
         self.pages.setCurrentIndex(index)
         for i,b in enumerate(self.nav_buttons):b.setChecked(i==index)
-        titles=['Топология сети','Конструктор экспериментов','Телеметрия сети','Мастерская детекторов','Результаты исследований','Справка и руководство']
+        titles=['Топология сети','Конструктор экспериментов','Телеметрия сети','Мастерская детекторов','Результаты исследований','Справка и руководство','Конструктор атак']
         self.title.setText(titles[index]);self.metric_widget.setVisible(index in (0,2))
         self.apply_overview_height()
         if index==0:QTimer.singleShot(0,self.graph.fit)
@@ -410,7 +419,7 @@ class MainWindow(QMainWindow):
         available={n['id'] for n in p['nodes']} if self.selected[0]=='node' else {e['id'] for e in p['links']}
         if self.selected[1] not in available:self.selected=('node',p['nodes'][0]['id'])
         stats=self.run_record if self.run_record and fingerprint(p)==fingerprint(self.run_record['project']) else None
-        self.graph.set_project(self.project,self.selected,stats);self.fill_inspector();self.refresh_experiment();self.refresh_metrics();self.save_workspace()
+        self.graph.set_project(self.project,self.selected,stats);self.fill_inspector();self.refresh_experiment();self.refresh_metrics();self.attacks_widget.refresh(self.project);self.save_workspace()
     def mutate(self,title,fn):
         before=copy.deepcopy(self.project);after=copy.deepcopy(before);fn(after);after=Project.model_validate(after).model_dump()
         if before!=after:self.undo.push(Snapshot(self,before,after,title));self.setWindowModified(not self.undo.isClean())
@@ -506,17 +515,19 @@ class MainWindow(QMainWindow):
     def delete_selected(self):
         kind,rid=self.selected
         if not kind:return
+        removed_links={l['id'] for l in self.project['links'] if rid in (l['source'],l['target'])} if kind=='node' else {rid}
+        if any((s['effect'] in NODE_EFFECTS and kind=='node' and s['target']==rid) or (s['effect'] not in NODE_EFFECTS and s['effect']!='surge' and s['target'] in removed_links) for a in self.project.get('attacks',[]) for s in a['steps']):raise ValueError('Объект используется сценарием атаки. Сначала измените цель или удалите сценарий во вкладке «Атаки».')
         if kind=='node' and any(f['source']==rid or f['target']==rid for f in self.project['flows']):raise ValueError('Узел используется потоком. Сначала измените или удалите поток в разделе «Эксперименты».')
         def change(p):
             if kind=='node':
-                ids={l['id'] for l in p['links'] if rid in (l['source'],l['target'])};p['nodes']=[n for n in p['nodes'] if n['id']!=rid];p['links']=[l for l in p['links'] if l['id'] not in ids];p['incidents']=[e for e in p['incidents'] if not (e['kind'] in ('node_down','node_restart') and e['target']==rid) and not (e['kind'] in ('link_down','latency','loss') and e['target'] in ids)]
+                ids={l['id'] for l in p['links'] if rid in (l['source'],l['target'])};p['nodes']=[n for n in p['nodes'] if n['id']!=rid];p['links']=[l for l in p['links'] if l['id'] not in ids];p['incidents']=[e for e in p['incidents'] if not (e['kind'] in NODE_EFFECTS and e['target']==rid) and not (e['kind'] in ('link_down','latency','loss','loss_absolute') and e['target'] in ids)]
                 for n in p['nodes']:
                     n['routing_table']={k:[x for x in v if x!=rid] for k,v in n['routing_table'].items() if any(x!=rid for x in v)}
                     n['gtt']={k:v for k,v in n['gtt'].items() if v in {x['point_code'] for x in p['nodes']}}
                 for f in p['flows']:
                     f['nf_bindings']={k:v for k,v in f['nf_bindings'].items() if v!=rid}
                     if f.get('data_network')==rid:f['data_network']=''
-            else:p['links']=[l for l in p['links'] if l['id']!=rid];p['incidents']=[e for e in p['incidents'] if not(e['kind'] in ('link_down','latency','loss') and e['target']==rid)]
+            else:p['links']=[l for l in p['links'] if l['id']!=rid];p['incidents']=[e for e in p['incidents'] if not(e['kind'] in ('link_down','latency','loss','loss_absolute') and e['target']==rid)]
         self.mutate('Удалить объект',change)
     def auto_layout(self):
         def change(p):
@@ -551,6 +562,7 @@ class MainWindow(QMainWindow):
     def delete_flow(self):
         idx=self.flows_table.currentRow()
         if idx<0:raise ValueError('Выберите поток')
+        if any(s['effect']=='surge' and s['target']==self.project['flows'][idx]['id'] for a in self.project.get('attacks',[]) for s in a['steps']):raise ValueError('Поток используется сценарием атаки. Сначала измените цель во вкладке «Атаки».')
         def change(p):
             f=p['flows'].pop(idx);p['incidents']=[e for e in p['incidents'] if not(e['kind']=='surge' and e['target']==f['id'])]
         self.mutate('Удалить поток',change)
@@ -632,10 +644,14 @@ class MainWindow(QMainWindow):
         stale=r is not None and fingerprint(p)!=fingerprint(r['project']);self.map_status.setText('Изменения после прогона' if stale else f'seed {r["seed"]} · {r["duration"]} s' if r else 'Готово к эксперименту')
     def refresh_measurements(self):
         self.refresh_metrics();self.graph.set_project(self.project,self.selected,self.run_record if fingerprint(self.project)==fingerprint(self.run_record['project']) else None)
-        r=self.run_record;self.rate_chart.set_series([dict(name='Сигнальный трафик · msg/s',color='#8fe0c2',points=[(w['time'],w['rate']) for w in r['windows']])],r['project']['incidents']);self.refresh_telemetry_chart();self.refresh_traces();self.refresh_results()
+        r=self.run_record;self.rate_chart.set_series([dict(name='Сигнальный трафик · msg/s',color='#8fe0c2',points=[(w['time'],w['rate']) for w in r['windows']])],self.run_events());self.refresh_telemetry_chart();self.refresh_traces();self.refresh_results();self.attacks_widget.refresh_report()
+    def run_events(self):
+        from lab.attacks import compile_attacks
+        p=Project.model_validate(self.run_record['project']);effects,_=compile_attacks(p)
+        return [e.model_dump() for e in [*p.incidents,*effects]]
     def refresh_telemetry_chart(self):
         if not self.run_record:return
-        k=self.telemetry_metric.currentData();self.telemetry_chart.set_series([dict(name=FEATURE_NAMES[k],points=[(w['time'],w.get(k,0)) for w in self.run_record['windows']])],self.run_record['project']['incidents'])
+        k=self.telemetry_metric.currentData();self.telemetry_chart.set_series([dict(name=FEATURE_NAMES[k],points=[(w['time'],w.get(k,0)) for w in self.run_record['windows']])],self.run_events())
     def refresh_traces(self):
         if not self.run_record:return
         text=self.trace_search.text().lower();kind=self.trace_filter.currentData();rows=sorted(self.run_record['traces'],key=lambda r:r['time'])
@@ -790,7 +806,7 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.6.1','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.7.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return
