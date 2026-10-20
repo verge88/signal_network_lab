@@ -3,13 +3,16 @@ import csv
 import io
 import math
 import json
+import hashlib
+import re
+from datetime import datetime
 from copy import deepcopy
 import numpy as np
 from .schema import Project
 from .simulator import simulate
 
 METRICS = ('delivery_ratio','latency_mean','latency_p95','latency_p99','throughput','retry_ratio','recovery_ms')
-TEMPLATE = 'run_id,offered_rate,delivery_ratio,latency_mean,latency_p95,latency_p99,throughput,retry_ratio,recovery_ms,latency_samples_ms,scenario,incidents_json\n'
+TEMPLATE = 'run_id,offered_rate,delivery_ratio,latency_mean,latency_p95,latency_p99,throughput,retry_ratio,recovery_ms,latency_samples_ms,scenario,incidents_json,source_kind,measurement_id,device,firmware,measured_at,raw_sha256\n'
 
 
 def observations(text):
@@ -38,10 +41,28 @@ def observations(text):
                 incidents=json.loads(r['incidents_json'])
                 if not isinstance(incidents,list) or len(incidents)>30:raise ValueError()
                 row['incidents']=[Incident.model_validate(incident).model_dump() for incident in incidents]
+            source=(r.get('source_kind') or 'unknown').strip()
+            if source not in ('unknown','synthetic','lab'):raise ValueError()
+            evidence={key:(r.get(key) or '').strip() for key in ('measurement_id','device','firmware','measured_at','raw_sha256')}
+            if any(len(value)>200 for value in evidence.values()):raise ValueError()
+            if source=='lab':
+                if not all(evidence.values()) or not re.fullmatch('[0-9a-fA-F]{64}',evidence['raw_sha256']):raise ValueError()
+                if datetime.fromisoformat(evidence['measured_at'].replace('Z','+00:00')).tzinfo is None:raise ValueError()
+                identity='|'.join(evidence[k] for k in ('device','firmware','measurement_id'))
+                row['independence_group']='lab:'+hashlib.sha256(identity.encode()).hexdigest()[:20]
+            else:row['independence_group']=row['run_id']
+            row['evidence']=dict(source_kind=source,**evidence)
             rows.append(row)
         except (ValueError,KeyError,AttributeError): raise ValueError(f'Некорректный опыт в строке {i+2}')
-    if len({r['run_id'] for r in rows})<4: raise ValueError('Нужно минимум четыре независимых run_id')
+    if len({r['independence_group'] for r in rows})<4: raise ValueError('Нужно минимум четыре независимых run_id / measurement_id')
+    for rid in {r['run_id'] for r in rows}:
+        if len({r['independence_group'] for r in rows if r['run_id']==rid})!=1:raise ValueError('Один run_id не может относиться к разным источникам измерений')
     return rows
+
+
+def evidence_report(text,rows,train_ids,test_ids):
+    sources=sorted({r['evidence']['source_kind'] for r in rows})
+    return dict(input_csv_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest(),sources=sources,status='declared_lab_holdout' if sources==['lab'] else 'synthetic_or_unverified',raw_artifacts_verified=False,hardware_accuracy_proven=False,independent_groups=len({r['independence_group'] for r in rows}),observations=[dict(run_id=r['run_id'],group_id=r['independence_group'],split='train' if r['independence_group'] in train_ids else 'test',**r['evidence']) for r in rows],interpretation='Metadata is declared by the researcher. File hashes identify supplied evidence; they do not establish hardware accuracy or independence by themselves.')
 
 
 def transformed(project, scales):

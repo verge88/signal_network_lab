@@ -2,6 +2,7 @@ from .schema import Project
 
 
 def preset(name='hybrid'):
+    if name=='5g-mobile':return mobile_preset()
     if name=='5g':return fiveg_preset()
     nodes = [
         ('msc', 'MSC / VLR', 'MSC', 140, 190, 800),
@@ -45,3 +46,18 @@ def fiveg_preset():
         dict(id='pdu-5g',source='gnb',target='amf',protocol='NGAP',operation='5G PDU Session',rate=2,message_bytes=900,response_bytes=640,timeout_ms=8000),
         dict(id='access-5g',source='gnb',target='amf',protocol='NGAP',operation='5G Registration + PDU Session',rate=4,message_bytes=800,response_bytes=512,timeout_ms=12000)]
     return Project(name='5G SA / Service-Based Core',nodes=nodes,links=links,flows=flows)
+
+
+def mobile_preset():
+    p=fiveg_preset().model_dump();p['name']='5G SA / Mobility and QoS'
+    for old,nid,x,y in [('gnb','gnb2',100,740),('amf','amf2',350,740),('upf','upf2',1270,740)]:
+        source=next(n for n in p['nodes'] if n['id']==old);p['nodes'].append(dict(source,id=nid,name=nid+' · резерв',host=nid+'.5gc.lab',x=x,y=y))
+    for src,dst,protocol in [('gnb2','amf2','NGAP'),('amf2','scp5g','SBI'),('smf','upf2','PFCP'),('gnb2','upf2','GTPU'),('upf2','dn','IP')]:
+        p['links'].append(dict(id=src+'-'+dst,source=src,target=dst,protocol=protocol,latency_ms=2,jitter_ms=.1,loss=.0001,bandwidth_mbps=100))
+    p['flows'][0]['mobility']=[dict(time=20,gnb='gnb2',amf='amf2',upf='upf2',interruption_ms=100)]
+    p['flows'][1].update(application_profile='interactive',qos_budget_ms=100,data_packets=20)
+    p['flows'][2].update(application_profile='video',video_on_s=.4,video_off_s=.4,qos_budget_ms=150,data_packets=30)
+    for n in p['nodes']:
+        n.update(cache_entries=128,cache_ttl_s=20,context_limit=2000,context_ttl_s=60)
+        if n['kind']=='UPF':n.update(upf_rate_mbps=1,upf_burst_bytes=12000,upf_queue_limit=32)
+    return Project.model_validate(p)

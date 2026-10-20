@@ -32,6 +32,7 @@ class ControlPlane:
         if e.p.control_plane:
             for lid,state in self.states.items():
                 if self.enabled(lid):e.push(e.links[lid].startup_ms,'ctrl_start',lid)
+                if e.links[lid].shutdown_at_s is not None:e.push(e.links[lid].shutdown_at_s*1000,'ctrl_close',lid,0)
         if e.p.routing_knowledge!='distributed':return
         if e.p.route_refresh_ms<=e.p.duration*1000:e.push(e.p.route_refresh_ms,'ctrl_sync',0)
         for index,incident in enumerate(e.p.incidents):
@@ -77,13 +78,14 @@ class ControlPlane:
     def change(self,lid,state):
         entry=self.states[lid];entry['state']=state
         self.e.lifecycle.append(dict(time=self.e.t/1000,object=lid,state='CONTROL_'+state))
-        if self.e.p.routing_knowledge=='distributed' and state in ('OPEN','DOWN'):
+        if self.e.p.routing_knowledge=='distributed' and state in ('OPEN','DOWN','CLOSING','CLOSED','REJECTED'):
             self.revision+=1;link=self.e.links[lid]
             for observer in (link.source,link.target):self.record_view(observer,('association',lid,'both'),state=='OPEN',self.revision,link.source)
 
     def start(self,lid):
         if not self.enabled(lid):return
         state=self.states[lid]
+        if state.get('administrative_closed') or state['state']=='REJECTED':return
         if state['state']=='OPEN' or state['pending'] is not None:return
         state['epoch']+=1;state['phase']=0;self.change(lid,'CONNECTING');self.request(lid,*PHASES[self.e.links[lid].protocol][0])
 
@@ -114,8 +116,17 @@ class ControlPlane:
         request=self.requests.get(c.get('request'))
         if not request or request['done'] or request['epoch']!=self.states[lid]['epoch']:return
         if not c['answer']:
-            self.enqueue(lid,msg['target'],msg['source'],request['answer'],dict(request=request['id'],epoch=request['epoch'],answer=True));return
+            error=None;link=e.links[lid]
+            if request['operation']=='CER':
+                a=set(e.nodes[link.source].applications);b=set(e.nodes[link.target].applications)
+                if not a&b and 4294967295 not in a|b:error='no_common_application'
+            elif request['operation']=='ASPAC' and link.peer_routing_context is not None and link.peer_routing_context!=link.routing_context:error='routing_context_mismatch'
+            self.enqueue(lid,msg['target'],msg['source'],request['answer'],dict(request=request['id'],epoch=request['epoch'],answer=True,error=error));return
         request['done']=True;state=self.states[lid];state['pending']=None
+        if c.get('error'):
+            self.counts[c['error']]+=1;state['rejection_reason']=c['error'];self.change(lid,'REJECTED');return
+        if request['operation']=='ASPIA':self.request(lid,'ASPDN','ASPDN_ACK');return
+        if request['operation'] in ('DPR','ASPDN'):self.change(lid,'CLOSED');return
         if request['operation'] in {pair[0] for pair in PHASES[e.links[lid].protocol]}:
             state['phase']+=1;phases=PHASES[e.links[lid].protocol]
             if state['phase']<len(phases):self.change(lid,'ASP_UP');self.request(lid,*phases[state['phase']]);return
@@ -127,11 +138,17 @@ class ControlPlane:
         if request['done'] or token!=request['token'] or request['epoch']!=state['epoch']:return
         if request['attempt']<link.control_retries:request['attempt']+=1;self.transmit(request);return
         request['done']=True;state['pending']=None;self.counts['timeouts']+=1;self.change(link.id,'DOWN')
+        if state.get('administrative_closed'):self.change(link.id,'CLOSED');return
         if e.t+link.reconnect_ms<=e.p.duration*1000:e.push(e.t+link.reconnect_ms,'ctrl_start',link.id)
 
     def event(self,kind,data):
         e=self.e
         if kind=='ctrl_start':self.start(data)
+        elif kind=='ctrl_close':
+            state=self.states[data];state['administrative_closed']=True;state['epoch']+=1
+            if state['pending'] is not None:self.requests[state['pending']]['done']=True
+            state['pending']=None;self.change(data,'CLOSING')
+            self.request(data,* (('DPR','DPA') if e.links[data].protocol=='Diameter' else ('ASPIA','ASPIA_ACK')))
         elif kind=='ctrl_timeout':self.timeout(*data)
         elif kind=='ctrl_heartbeat':
             lid,epoch=data;state=self.states[lid]

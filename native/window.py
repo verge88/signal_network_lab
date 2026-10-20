@@ -32,8 +32,7 @@ def timestamp(s):
     try:return datetime.fromisoformat(s).astimezone().strftime('%d.%m %H:%M')
     except ValueError:return s
 def fingerprint(p):
-    q=copy.deepcopy(p)
-    q.setdefault('attacks',[])
+    q=Project.model_validate(p).model_dump()
     for n in q['nodes']:n.pop('x',None);n.pop('y',None)
     return json.dumps(q,sort_keys=True)
 
@@ -111,7 +110,7 @@ class MainWindow(QMainWindow):
         for text,fn,ico in [('Открыть проект',self.open_project,'folder'),('Сохранить проект',self.save_project,'save')]:
             b=self.action_button(text,fn,ico);b.setObjectName('Nav');sidebar_button(b,text)
         sl.addStretch();about=self.action_button('О модели лаборатории',self.about,'settings');about.setObjectName('Nav');sidebar_button(about,'О модели лаборатории')
-        offline=label('●  OFFLINE ENGINE   /   v2.7','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
+        offline=label('●  OFFLINE ENGINE   /   v2.8','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
         root.addWidget(side)
         right=QWidget();self.workspace_right=right;rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0);root.addWidget(right,1)
         body=QWidget();bl=QVBoxLayout(body);bl.setContentsMargins(13,8,13,10);bl.setSpacing(12);rl.addWidget(body,1)
@@ -161,6 +160,7 @@ class MainWindow(QMainWindow):
         self.menu_action(research_menu,'Запустить эксперимент',self.start_run,'F5');self.menu_action(research_menu,'Отменить / выйти из режима карты',self.escape_action,'Escape');self.menu_action(research_menu,'Сформировать ML-датасет',self.generate_dataset)
         self.menu_action(research_menu,'Конструктор атак',lambda:self.show_page(6),'Ctrl+Shift+A')
         self.help_action=self.menu_action(help_menu,'Руководство пользователя',self.show_help,'F1')
+        self.menu_action(templates,'5G · мобильность и QoS',lambda:self.new_project('5g-mobile'))
         self.menu_action(help_menu,'Основы сигнальных сетей',lambda:self.show_help('Основы сигнальных сетей'))
         self.menu_action(help_menu,'Словарь сокращений',lambda:self.show_help('Словарь сокращений'))
         help_menu.addSeparator();self.menu_action(help_menu,'О модели и ограничениях',self.about);self.menu_action(help_menu,'Горячие клавиши',self.shortcuts)
@@ -194,6 +194,8 @@ class MainWindow(QMainWindow):
         sources.append(dict(key='topology',title='Топология · '+self.project['name'],kind='topology',widget=self.graph,metadata=dict(project_name=self.project['name'])))
         sources.append(dict(key='attacks_table',title='Конструктор атак · этапы',kind='table',widget=self.attacks_widget.steps_table))
         sources.append(dict(key='attacks_report',title='Конструктор атак · отчёт прогона',kind='table',widget=self.attacks_widget.report_table))
+        sources.append(dict(key='resource_table',title='БД, кэш и контексты',kind='table',widget=self.resource_table))
+        sources.append(dict(key='mobility_table',title='5G · перемещения групп UE',kind='table',widget=self.mobility_table))
         for key,title in [('flows_table','Сигнальные потоки'),('incidents_table','События сценария'),('sweep_table','Параметрическое исследование'),('calibration_table','Калибровка'),('trace_table','Транзакции · текущий фильтр'),('lifecycle_table','Отказы и состояния'),('procedure_table','Процедуры'),('transport_table','Транспорт'),('message_table','Запросы и ответы'),('fiveg_table','5G · NF / сервисы'),('control_table','Управляющий обмен'),('routing_state_table','Представления маршрутизаторов'),('user_plane_table','5G · пользовательские пакеты'),('confusion','Матрица ошибок'),('importance','Важность признаков'),('prediction_table','Применение детектора'),('runs_table','Библиотека прогонов'),('comparison','Сравнение прогонов'),('projects_table','Библиотека проектов'),('series_table','Библиотека серий')]:
             sources.append(dict(key=key,title=title,kind='table',widget=getattr(self,key)))
         return sources
@@ -352,6 +354,8 @@ class MainWindow(QMainWindow):
         self.routing_state_table=table(['Время, s','Наблюдатель','Ресурс','Состояние','Источник знания']);self.details_tabs.addTab(self.routing_state_table,'Доступность у узлов')
         data_page=QWidget();data_layout=QVBoxLayout(data_page);data_layout.setContentsMargins(0,8,0,0);self.user_plane_info=label('Пользовательский трафик проверяется отдельно от успешного PDU.','Muted');self.user_plane_info.setWordWrap(True);data_layout.addWidget(self.user_plane_info)
         self.user_plane_table=table(['Время, s','Сессия / пакет','UPF → DN','Статус','RTT, ms','Размер, B']);data_layout.addWidget(self.user_plane_table);self.details_tabs.addTab(data_page,'5G · N3 / N6')
+        self.resource_table=table(['Узел','БД: запросы / завершения','Кэш: попадания / промахи','Очередь / соединения max','Тайм-аут / отказ','Контексты','Кэш данных / ответов']);self.details_tabs.addTab(self.resource_table,'БД и контексты')
+        self.mobility_table=table(['Начало / конец, s','Поток','gNB','AMF','UPF','Результат']);self.details_tabs.addTab(self.mobility_table,'5G · мобильность')
         split.addWidget(log);split.setSizes([270,350])
         self.telemetry_metric.currentIndexChanged.connect(self.refresh_telemetry_chart);self.trace_filter.currentIndexChanged.connect(self.refresh_traces);self.trace_search.textChanged.connect(self.refresh_traces)
         return page
@@ -515,6 +519,7 @@ class MainWindow(QMainWindow):
     def delete_selected(self):
         kind,rid=self.selected
         if not kind:return
+        if kind=='node' and any(rid in (m['gnb'],m['amf'],m['upf']) for f in self.project['flows'] for m in f['mobility']):raise ValueError('Узел используется расписанием мобильности. Сначала измените цель перемещения в редакторе потока.')
         removed_links={l['id'] for l in self.project['links'] if rid in (l['source'],l['target'])} if kind=='node' else {rid}
         if any((s['effect'] in NODE_EFFECTS and kind=='node' and s['target']==rid) or (s['effect'] not in NODE_EFFECTS and s['effect']!='surge' and s['target'] in removed_links) for a in self.project.get('attacks',[]) for s in a['steps']):raise ValueError('Объект используется сценарием атаки. Сначала измените цель или удалите сценарий во вкладке «Атаки».')
         if kind=='node' and any(f['source']==rid or f['target']==rid for f in self.project['flows']):raise ValueError('Узел используется потоком. Сначала измените или удалите поток в разделе «Эксперименты».')
@@ -565,6 +570,7 @@ class MainWindow(QMainWindow):
         if any(s['effect']=='surge' and s['target']==self.project['flows'][idx]['id'] for a in self.project.get('attacks',[]) for s in a['steps']):raise ValueError('Поток используется сценарием атаки. Сначала измените цель во вкладке «Атаки».')
         def change(p):
             f=p['flows'].pop(idx);p['incidents']=[e for e in p['incidents'] if not(e['kind']=='surge' and e['target']==f['id'])]
+            for node in p['nodes']:node['upf_rules']=[r for r in node['upf_rules'] if r['flow_id']!=f['id']]
         self.mutate('Удалить поток',change)
     def edit_incident(self,existing=False):
         idx=self.incidents_table.currentRow()
@@ -629,6 +635,7 @@ class MainWindow(QMainWindow):
         result=self.calibration_record
         if not result:populate(self.calibration_table,[]);self.calibration_info.setText('Выберите отчёт или загрузите измерения для подбора.');return
         self.calibration_info.setText('Train: '+', '.join(result['split']['train'])+'; test: '+', '.join(result['split']['test'])+f'. Симуляций: {result.get("simulations","—")}. Параметры: '+json.dumps(result.get('parameters',result['scales']),ensure_ascii=False))
+        evidence=result.get('evidence',{});self.calibration_info.setText(self.calibration_info.text()+'\nПроисхождение: '+', '.join(evidence.get('sources',['не указано']))+'. '+('Есть метаданные стенда; подлинность исходных артефактов не проверена.' if evidence.get('status')=='declared_lab_holdout' else 'Внешняя достоверность по оборудованию не подтверждена.'))
         populate(self.calibration_table,[[split,key,number(result['before'][split]['normalized_mae'][key],4),number(value,4),(' – '.join(number(interval[k],4) for k in ('lower','upper')) if split=='test' and (interval:=result.get('test_error_ci95',{}).get(key)) else '—')] for split in ('train','test') for key,value in result['after'][split]['normalized_mae'].items()])
     def apply_calibration(self):
         result=getattr(self,'calibration_record',None)
@@ -669,6 +676,12 @@ class MainWindow(QMainWindow):
         populate(self.routing_state_table,[[number(x['time'],3),x['observer'],x['resource']+' / '+x['target']+' / '+x['direction'],'UP' if x['up'] else 'DOWN',x['origin']] for x in control.get('view_events',[])])
         populate(self.user_plane_table,[[number(x['time'],3),str(x['procedure_id'])+' / '+str(x['packet_id']),str(x['upf'])+' → '+str(x['dn']),x['status'],number(x['rtt_ms'],2),x['bytes']] for x in data.get('traces',[])])
         self.user_plane_info.setText(f'Пользовательские пакеты: {data.get("delivered",0)} / {data.get("sent",0)} · доставка {percent(data.get("delivery_ratio"))} · RTT p95 {number(data.get("rtt_p95"))} ms · goodput {number(data.get("goodput_mbps"),3)} Mbps. Успех PDU оценивается отдельно.')
+        self.user_plane_info.setText(self.user_plane_info.text()+f' В бюджете QoS: {data.get("qos_met",0)}. Освобождено PDU: {data.get("released_sessions",0)}. UPF: '+json.dumps(data.get('upf_policy',{}),ensure_ascii=False))
+        resources=self.run_record.get('resources',{});stores=resources.get('stores',{})
+        entries=lambda name,n:stores.get(name,{}).get('by_node',{}).get(n,0)
+        populate(self.resource_table,[[n,f"{s['requests']} / {s['completed']}",f"{s['hits']} / {s['misses']}",f"{s['max_queue']} / {s['max_active']}",f"{s['timeouts']} / {s['rejected']}",entries('fiveg_contexts',n)+entries('subscriber_contexts',n),f"{entries('data_cache',n)} / {entries('transactions',n)}"] for n,s in resources.get('database',{}).items()])
+        mobility_names=dict(completed='Завершено',handover_timeout='Тайм-аут переноса',context_limit='Лимит контекстов',context_conflict='Конфликт контекстов',peer_unavailable='Узел недоступен',peer_restarted='Узел перезапущен',profile_not_supported='Профиль не поддерживается',mobility_busy='Перенос уже выполняется')
+        populate(self.mobility_table,[[number(m['time'],3)+' / '+number(m.get('end'),3),m['flow_id'],m.get('old_gnb','—')+' → '+m.get('new_gnb','—'),m.get('old_amf','—')+' → '+m.get('new_amf','—'),m.get('new_upf') or 'Текущий',mobility_names.get(m['status'],m['status'])] for m in self.run_record.get('mobility',[])])
 
     def refresh_library(self):
         self.records={kind:storage.listing(kind) for kind in ['run','dataset','model','project','sweep','calibration']}
@@ -806,7 +819,7 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.7.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.8.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return

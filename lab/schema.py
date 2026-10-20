@@ -8,6 +8,31 @@ FIVEG_OPERATIONS=['5G Registration','5G PDU Session','5G Registration + PDU Sess
 OPERATIONS=['MAP UpdateLocation','MAP SendAuthenticationInfo','ISUP IAM','Diameter ULR','Diameter AIR','Diameter CCR',*FIVEG_OPERATIONS]
 
 
+class UpfRule(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    name: str=Field(default='Правило',max_length=80)
+    precedence: int=Field(default=100,ge=0,le=65535)
+    flow_id: str=Field(default='',max_length=50)
+    dnn: str=Field(default='',max_length=100)
+    snssai: str=Field(default='',max_length=20)
+    direction: Literal['both','uplink','downlink']='both'
+    action: Literal['forward','drop']='forward'
+    rate_mbps: float=Field(default=0,ge=0,le=100000)
+    burst_bytes: int=Field(default=65536,ge=32,le=10000000)
+    max_packet_bytes: int=Field(default=65536,ge=32,le=65536)
+
+
+class MobilityEvent(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    time: float=Field(ge=0,le=599)
+    gnb: str=Field(min_length=1,max_length=50)
+    amf: str=Field(default='',max_length=50)
+    upf: str=Field(default='',max_length=50)
+    interruption_ms: float=Field(default=50,ge=0,le=30000)
+    timeout_ms: float=Field(default=2000,ge=1,le=30000)
+    transfer_context: bool=True
+
+
 class Node(BaseModel):
     id: str = Field(min_length=1, max_length=50, pattern=r'^[\w-]+$')
     name: str = Field(max_length=80)
@@ -41,6 +66,21 @@ class Node(BaseModel):
     services: list[str] = Field(default_factory=list, max_length=30)
     advertisement_delay_ms: float = Field(default=5,ge=0,le=30000)
     observer_detection_ms: float | None = Field(default=None,ge=0,le=30000)
+    storage_model: Literal['queued','probabilistic']='queued'
+    db_connections: int=Field(default=4,ge=1,le=128)
+    db_queue_limit: int=Field(default=100,ge=0,le=10000)
+    db_timeout_ms: float=Field(default=1000,ge=1,le=60000)
+    cache_entries: int=Field(default=1000,ge=0,le=100000)
+    cache_ttl_s: float=Field(default=60,gt=0,le=86400)
+    context_limit: int=Field(default=10000,ge=1,le=1000000)
+    context_ttl_s: float=Field(default=300,gt=0,le=86400)
+    transaction_cache_limit: int=Field(default=10000,ge=0,le=100000)
+    transaction_cache_ttl_s: float=Field(default=30,gt=0,le=86400)
+    upf_rules: list[UpfRule]=Field(default_factory=list,max_length=32)
+    upf_default_action: Literal['forward','drop']='forward'
+    upf_rate_mbps: float=Field(default=0,ge=0,le=100000)
+    upf_burst_bytes: int=Field(default=65536,ge=32,le=10000000)
+    upf_queue_limit: int=Field(default=100,ge=0,le=10000)
 
 
 class Link(BaseModel):
@@ -80,6 +120,8 @@ class Link(BaseModel):
     control_retries: int = Field(default=1,ge=0,le=4)
     reconnect_ms: float = Field(default=500,ge=10,le=30000)
     control_bytes: int = Field(default=128,ge=32,le=9000)
+    peer_routing_context: int | None=Field(default=None,ge=0,le=4294967295)
+    shutdown_at_s: float | None=Field(default=None,ge=0,le=599)
 
     @model_validator(mode='after')
     def rto_bounds(self):
@@ -128,6 +170,13 @@ class Flow(BaseModel):
     data_interval_ms: float = Field(default=100,ge=1,le=60000)
     data_bytes: int = Field(default=1200,ge=32,le=65536)
     data_timeout_ms: float = Field(default=2000,ge=1,le=30000)
+    application_profile: Literal['probe','interactive','video','bulk']='probe'
+    video_on_s: float=Field(default=1,gt=0,le=600)
+    video_off_s: float=Field(default=1,ge=0,le=600)
+    data_priority: int=Field(default=1,ge=0,le=2)
+    qos_budget_ms: float=Field(default=0,ge=0,le=60000)
+    session_lifetime_s: float=Field(default=30,ge=0,le=86400)
+    mobility: list[MobilityEvent]=Field(default_factory=list,max_length=12)
 
     @model_validator(mode='after')
     def procedure_compatible(self):
@@ -252,7 +301,12 @@ class Project(BaseModel):
                 raise ValueError('Не найден объект сценария: ' + e.target)
             if e.start >= self.duration:
                 raise ValueError('Событие начинается после окончания эксперимента')
+        for link in self.links:
+            if link.shutdown_at_s is not None and (link.shutdown_at_s>=self.duration or link.protocol not in ('M3UA','Diameter') or not self.control_plane or self.engine!='procedures'):
+                raise ValueError('Штатное закрытие требует M3UA/Diameter, управление и время внутри эксперимента')
         for n in self.nodes:
+            if n.upf_rules and n.kind!='UPF':raise ValueError('Правила пользовательского пути задаются на UPF')
+            if any(r.flow_id and r.flow_id not in {f.id for f in self.flows} for r in n.upf_rules):raise ValueError('Правило UPF ссылается на неизвестный поток')
             for destinations in n.routing_table.values():
                 if not destinations or len(destinations)>60 or any(x not in ids or x==n.id for x in destinations):
                     raise ValueError('Таблица маршрутизации содержит неизвестный следующий узел')
@@ -260,6 +314,14 @@ class Project(BaseModel):
                 raise ValueError('GTT ссылается на неизвестный point code')
         by_id={n.id:n for n in self.nodes}
         for f in self.flows:
+            if f.mobility and (f.protocol!='NGAP' or self.engine!='procedures'):raise ValueError('Мобильность требует поток 5G и движок процедур')
+            times=[m.time for m in f.mobility]
+            if times!=sorted(set(times)):raise ValueError('События мобильности должны иметь уникальное возрастающее время')
+            for m in f.mobility:
+                if m.time>=self.duration:raise ValueError('Перемещение начинается после эксперимента')
+                if m.upf and not any(n.kind=='SMF' for n in self.nodes):raise ValueError('Перенос UPF требует SMF и связность PFCP')
+                for nid,kind in [(m.gnb,'gNB'),(m.amf,'AMF'),(m.upf,'UPF')]:
+                    if nid and (nid not in by_id or by_id[nid].kind!=kind):raise ValueError('Неверная цель мобильности: '+kind)
             if f.operation in FIVEG_OPERATIONS:
                 if self.engine!='procedures':raise ValueError('5G требует движок процедур v2')
                 if by_id[f.source].kind!='gNB' or by_id[f.target].kind!='AMF':raise ValueError('Процедура 5G начинается на gNB и адресуется AMF')

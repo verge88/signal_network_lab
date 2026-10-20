@@ -30,6 +30,12 @@ class CalibrationDialog(QDialog):
         def defaults():
             path=target.currentData();key=path.split(':')[-1]
             lo,hi=(.25,4) if path.startswith('global:') else (0,1) if key in ('loss','reverse_loss','error_rate','cache_hit_ratio') else (1,128) if key=='workers' else (1,100000) if key=='capacity' else (.001,100000) if key=='bandwidth_mbps' else (0,5000) if key in ('latency_ms','reverse_latency_ms') else (50,60000) if key=='heartbeat_ms' else (10,30000) if key=='control_timeout_ms' else (0,1000) if key in ('processing_ms','database_ms','jitter_ms') else (0,30000)
+            if key=='db_connections':lo,hi=1,128
+            elif key in ('db_queue_limit','cache_entries'):lo,hi=0,10000
+            elif key=='context_limit':lo,hi=1,100000
+            elif key in ('cache_ttl_s','context_ttl_s'):lo,hi=.01,600
+            elif key=='db_timeout_ms':lo,hi=1,60000
+            elif key=='upf_rate_mbps':lo,hi=0,1000
             lower.setValue(lo);upper.setValue(hi);scale.setCurrentIndex(1 if path.startswith('global:') else 0)
         target.currentIndexChanged.connect(defaults)
 

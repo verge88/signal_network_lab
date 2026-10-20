@@ -12,7 +12,7 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import CancelledError
 import numpy as np
 
-ENGINE_VERSION = '2.4.0'
+ENGINE_VERSION = '2.5.0'
 CONTRACT = 'procedures-v2'
 ANSWERS = {'MAP UpdateLocation': 'MAP UpdateLocationResult',
            'MAP SendAuthenticationInfo': 'MAP AuthenticationInfoResult',
@@ -55,7 +55,10 @@ class ProcedureSimulation:
         self.next_admission = defaultdict(float)
         self.last_admission = {}
         self.wake = {}
-        self.cache, self.subscribers = {}, {}
+        from .resources import StorageResources
+        self.storage=StorageResources(self)
+        self.cache=self.storage.store('transactions',lambda n:n.transaction_cache_limit,lambda n:n.transaction_cache_ttl_s,node_key=lambda k:k[1] if len(k)==4 and k[0]=='5g' else k[0],evict=True)
+        self.subscribers=self.storage.store('subscriber_contexts',lambda n:n.context_limit,lambda n:n.context_ttl_s)
         self.wire, self.wire_queue = defaultdict(float), defaultdict(deque)
         self.loss_last = defaultdict(bool)
         self.associations = {}
@@ -335,6 +338,7 @@ class ProcedureSimulation:
         msg = dict(id=self.message_seq, procedure=pr['id'], step=pr['step'] if step is None else step, source=src, target=dst, role=role, operation=operation, size=size, result=result, path=path, hop=0, start=self.t, valid=True,protocol=f.protocol,rpc_id=rpc_id,gtt_pending=pending_gt,route_record=route_record)
         self.messages[msg['id']] = msg
         msg['category']=category;msg['context']=context
+        if category=='userplane':msg['priority']=f.data_priority
         self.arrive_node(msg, src)
         return msg
 
@@ -360,7 +364,7 @@ class ProcedureSimulation:
         if not immediate and len(queue)>=self.nodes[n].queue_limit:
             stat['dropped'] += 1; self.fail_message(msg, 'queue_overflow'); return
         self.serial += 1
-        heapq.heappush(queue, (pr['flow'].priority, self.serial, msg, self.t))
+        heapq.heappush(queue, (msg.get('priority',pr['flow'].priority), self.serial, msg, self.t))
         stat['max_queue'] = max(stat['max_queue'], len(queue)-int(immediate))
         if self.t<self.p.duration*1000:self.buckets[self.window(self.t)]['queue'].append(len(queue)-int(immediate))
         self.dispatch(n)
@@ -386,7 +390,7 @@ class ProcedureSimulation:
             elif node.service_distribution == 'lognormal' and mean:
                 sigma = math.sqrt(math.log1p(node.service_cv**2)); service = self.rng.lognormal(math.log(mean)-sigma*sigma/2, sigma)
             else: service = mean
-            if application_work and self.rng.random()>=node.cache_hit_ratio: service += node.database_ms
+            if application_work and node.storage_model=='probabilistic' and self.rng.random()>=node.cache_hit_ratio: service += node.database_ms
             service = max(.0001, float(service))*self.effect_value('node_delay',n,self.t)
             self.touch(self.procedures[msg['procedure']],n)
             done = self.t+service
@@ -409,6 +413,13 @@ class ProcedureSimulation:
         self.dispatch(n)
         if not self.usable(msg): return
         if not self.node_up(n, self.t): self.fail_message(msg, 'node_down'); return
+        node=self.nodes[n]
+        if node.storage_model=='queued' and node.database_ms>0 and msg.get('category')=='signalling' and msg['role']=='request' and n==msg['target']:
+            self.storage.submit(n,msg,arrival);return
+        self.complete_node(n,msg,arrival)
+
+    def complete_node(self,n,msg,arrival):
+        if not self.usable(msg) or not self.node_up(n,self.t):return
         stat = self.node_stats[n]; stat['processed'] += 1; stat['latency'].append(self.t-arrival)
         if msg.get('gtt_pending'):
             self.advance_gt(msg,n)
@@ -428,6 +439,7 @@ class ProcedureSimulation:
         self.start_transfer(msg, n, nxt, lid)
 
     def node_fault(self, n, kind):
+        self.storage.node_fault(n,kind=='node_restart')
         if kind=='node_restart' and self.p.control_plane:self.control.node_restart(n)
         for msg, lo, _, _ in self.running[n].values():
             self.record_busy(n, lo, self.t); self.touch(self.procedures[msg['procedure']], n); self.fail_message(msg, kind)
@@ -435,9 +447,6 @@ class ProcedureSimulation:
         self.running[n].clear(); self.node_epoch[n] += 1
         for _, _, msg, _ in self.node_queue[n]: self.touch(self.procedures[msg['procedure']], n); self.fail_message(msg, kind)
         self.node_queue[n].clear(); self.next_admission[n] = self.t
-        if kind=='node_restart':
-            self.cache = {key:value for key,value in self.cache.items() if key[0]!=n}
-            self.subscribers = {key:value for key,value in self.subscribers.items() if key[0]!=n}
 
     def association(self, lid, src):
         key = (lid, src)
@@ -594,6 +603,7 @@ class ProcedureSimulation:
         self.packet_send(packet,lid,src)
 
     def app_arrival(self, msg):
+        if msg.get('category')=='mobility':self.mobility.arrival(msg);return
         if msg.get('category')=='control':self.control.arrival(msg);return
         if msg.get('category')=='userplane':self.user_plane.arrival(msg);return
         pr = self.procedures[msg['procedure']]; f = pr['flow']; dst = msg['target']
@@ -606,15 +616,19 @@ class ProcedureSimulation:
             else:
                 state_key = (dst, f.source, pr['subscriber'])
                 state = self.subscribers.get(state_key,'new')
-                result = 'success'
+                result = msg.get('resource_error','success')
                 kind=self.nodes[dst].kind
-                if (msg['operation'].startswith('MAP') and kind not in ('HLR','SCP')) or (msg['operation'] in ('Diameter AIR','Diameter ULR') and kind!='HSS') or (msg['operation']=='ISUP IAM' and kind!='MSC'):result='unsupported_service'
+                if result!='success':pass
+                elif (msg['operation'].startswith('MAP') and kind not in ('HLR','SCP')) or (msg['operation'] in ('Diameter AIR','Diameter ULR') and kind!='HSS') or (msg['operation']=='ISUP IAM' and kind!='MSC'):result='unsupported_service'
                 elif f.procedure=='registration' and msg['step']>0 and state not in ('authenticated','registered'): result='session_state_lost'
                 elif self.rng.random()<self.application_error(dst): result='protocol_error'
                 if result=='success':
-                    if 'Authentication' in msg['operation'] or msg['operation']=='Diameter AIR': self.subscribers[state_key]='authenticated'
-                    elif 'UpdateLocation' in msg['operation'] or msg['operation']=='Diameter ULR': self.subscribers[state_key]='registered'
-                else: self.node_stats[dst]['errors'] += 1
+                    from .resources import CapacityError
+                    try:
+                        if 'Authentication' in msg['operation'] or msg['operation']=='Diameter AIR': self.subscribers[state_key]='authenticated'
+                        elif 'UpdateLocation' in msg['operation'] or msg['operation']=='Diameter ULR': self.subscribers[state_key]='registered'
+                    except CapacityError:result='context_limit'
+                if result!='success': self.node_stats[dst]['errors'] += 1
                 self.cache[key] = result
             # ISUP ACM is an intermediate response; ANM determines call setup completion.
             if msg['operation']=='ISUP IAM': self.send_message(pr,dst,f.source,'intermediate','ISUP ACM',64,result,msg['step'])
@@ -680,8 +694,11 @@ class ProcedureSimulation:
             elif kind.startswith('rpc_'):self.rpc_event(kind,data)
             elif kind.startswith('ctrl_'):self.control.event(kind,data)
             elif kind.startswith('user_'):self.user_plane.event(kind,data)
+            elif kind.startswith('resource_'):self.storage.event(kind,data)
+            elif kind.startswith('mobility_'):self.mobility.event(kind,data)
             if self.steps>12000000: raise ValueError('Превышен лимит 12 млн событий; уменьшите нагрузку, размеры или число повторов')
         result=self.report();result['control_plane']=self.control.report()
+        result['resources']=self.storage.report()
         result['config_sha256']=hashlib.sha256(json.dumps(self.original_project.model_dump(),sort_keys=True).encode()).hexdigest()
         result['attacks']=self.report_attacks()
         for i,origin in self.attack_origins.items():result['incidents'][i].update(origin)

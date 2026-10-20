@@ -116,6 +116,7 @@ class SmokeTest(QObject):
             self.verify_protocol_regressions()
             self.verify_handbook()
             self.verify_attacks()
+            self.verify_resource_services()
             self.verify_expanded_topology()
             self.verify_mouse_links()
             # Exercise native forms and all page construction paths.
@@ -160,12 +161,42 @@ class SmokeTest(QObject):
             w.run_record=record;w.refresh_measurements();assert page.report_table.rowCount()==2
             for mode in ('dark','monochrome','light_monochrome'):
                 w.apply_theme(mode,persist=False);w.show_page(6);self.app.processEvents();page.tabs.setCurrentIndex(0);self.capture(f'{mode}-attack-builder');page.tabs.setCurrentIndex(2);self.capture(f'{mode}-attack-report')
-            assert len(PRESETS)==12 and len(w.export_sources())==27
+            assert len(PRESETS)==12 and len(w.export_sources())==29
             self.completed.append('attack builder: 12 presets, custom step/profile editing, native timeline and reports in all themes, clone/toggle/undo, local templates, 5G effects and styled table export sources')
         finally:
             while w.undo.index()>history:w.undo.undo()
             assert json.dumps(w.project,sort_keys=True)==before
             w.run_record=None;page.refresh_report();w.apply_theme(theme,persist=False);w.show_page(0)
+    def verify_resource_services(self):
+        from lab.presets import preset
+        from .service_lists import ListDialog
+        w=self.window;before=json.dumps(w.project,sort_keys=True);history=w.undo.index();theme=w.theme
+        try:
+            p=preset('5g-mobile').model_dump();p['duration']=12;p['window']=1;p['flows'][0]['mobility'][0]['time']=3
+            for f in p['flows']:f['rate']=.4
+            w.mutate('Проверка БД, QoS и мобильности',lambda config:config.update(p));w.run_record=research.run(w.project);w.refresh_measurements()
+            assert w.resource_table.rowCount()==15 and w.mobility_table.rowCount()==1
+            assert w.run_record['mobility'][0]['status']=='completed'
+            assert any(s['requests']>0 for s in w.run_record['resources']['database'].values())
+            assert w.run_record['user_plane']['sent']>0
+            node=next(n for n in w.project['nodes'] if n['kind']=='UPF');d=node_editor(w,node);assert d.values()['storage_model']=='queued' and d.values()['context_limit']==2000
+            flow=flow_editor(w,w.project,w.project['flows'][0]);assert flow.values()['mobility'][0]['gnb']=='gnb2'
+            link=link_editor(w,w.project);assert link.values()['peer_routing_context'] is None and link.values()['shutdown_at_s'] is None
+            rules=ListDialog(w,w.project,'upf',[dict(name='QoS',precedence=10,flow_id='',dnn='internet',snssai='',direction='both',action='forward',rate_mbps=1,burst_bytes=12000,max_packet_bytes=65536)])
+            for name in ('monochrome','light_monochrome','dark'):
+                w.apply_theme(name,persist=False);w.show_page(2);w.details_tabs.setCurrentIndex(9);self.app.processEvents();self.capture(name+'-database-resources')
+                w.details_tabs.setCurrentIndex(10);self.app.processEvents();self.capture(name+'-mobility')
+                d.tabs.setCurrentIndex(d.tabs.count()-2);d.show();self.app.processEvents()
+                if self.output:d.grab().save(str(self.output/f'{name}-resource-editor.png'))
+                d.hide();rules.show();self.app.processEvents()
+                if self.output:rules.grab().save(str(self.output/f'{name}-upf-rules.png'))
+                rules.hide()
+            for dialog in (d,flow,link,rules):dialog.deleteLater()
+            self.completed.append('realism 2.5: finite DB pool, LRU/TTL caches, bounded contexts, PDU release, application/QoS forms, native UPF rules, resource-bearing gNB/AMF/UPF mobility and two exportable telemetry tables in all themes')
+        finally:
+            while w.undo.index()>history:w.undo.undo()
+            assert json.dumps(w.project,sort_keys=True)==before
+            w.run_record=None;w.apply_theme(theme,persist=False);w.show_page(0)
     def verify_startup(self):
         from .startup import StartupSplash
         state=self.app.startup_state
@@ -195,7 +226,7 @@ class SmokeTest(QObject):
         w.show_page(0);w.set_topology_expanded(True);w.activateWindow();w.graph.setFocus();self.app.processEvents();QTest.keyClick(w.graph,Qt.Key.Key_F1);self.app.processEvents()
         assert w.pages.currentIndex()==5 and not w.topology_expanded
         w.show_help('Начало работы');w.show_page(0)
-        self.completed.append('offline handbook: 26 chapters, all node/protocol glossary entries, full-text Cyrillic search, no-results recovery, F1 from expanded topology and native help navigation')
+        self.completed.append('offline handbook: 27 chapters, all node/protocol glossary entries, full-text Cyrillic search, no-results recovery, F1 from expanded topology and native help navigation')
     def verify_expanded_topology(self):
         from lab.schema import NODE_KINDS
         w=self.window;original=json.dumps(w.project,sort_keys=True);selection=w.selected;theme=w.theme;settings=w.settings;size=w.size()
@@ -340,7 +371,7 @@ class SmokeTest(QObject):
         export_ui.QFileDialog=TestFileDialog
         try:
             w.settings=QSettings(str(storage.DATA/'export-self-test.ini'),QSettings.Format.IniFormat)
-            assert len(w.export_sources())==27
+            assert len(w.export_sources())==29
             for theme in ('monochrome','light_monochrome','dark'):
                 w.apply_theme(theme,persist=False)
                 dialog=ExportDialog(w,w.export_sources(),'telemetry_chart');dialog.show();self.app.processEvents();dialog.refresh_preview()

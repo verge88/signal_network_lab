@@ -29,13 +29,19 @@ def call(source,target,operation,children=(),protocol='SBI',query=None):
 class FiveGSimulation(ProcedureSimulation):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.rpc_seq=0;self.rpcs={};self.contexts={};self.service_stats={}
+        self.rpc_seq=0;self.rpcs={};self.contexts=self.storage.store('fiveg_contexts',lambda n:n.context_limit,lambda n:n.context_ttl_s);self.service_stats={};self.seeded_initial=set()
         self.restarted_nodes=set()
         # Cohorts represent initial state at t=0 without allocating up to a
         # million subscriber dictionaries. A restart invalidates the whole cohort.
         self.initial_registration_cohorts=[(f.target,f.source,f.plmn,f.snssai.lower(),f.dnn,f.subscribers) for f in self.p.flows if f.operation=='5G PDU Session' and f.initial_registered]
         from .userplane import UserPlane
         self.user_plane=UserPlane(self)
+        from .mobility import Mobility
+        self.mobility=Mobility(self)
+
+    def prepare(self):super().prepare();self.mobility.prepare()
+
+    def new(self,ident,f):super().new(ident,self.mobility.flow(f))
 
     def profile_matches(self,n,f,service=None):
         return (n.enabled and n.nf_status=='REGISTERED' and n.plmn==f.plmn
@@ -98,8 +104,9 @@ class FiveGSimulation(ProcedureSimulation):
 
     def registration_context(self,pr,n):
         key=self.context_key(pr,n)
-        if key not in self.contexts and n not in self.restarted_nodes:
-            if any((n,key[1],key[3],key[4],key[5])==cohort[:5] and key[2]<cohort[5] for cohort in self.initial_registration_cohorts):self.contexts[key]={'registered':True}
+        if key not in self.contexts and key not in self.seeded_initial and n not in self.restarted_nodes and self.t<self.nodes[n].context_ttl_s*1000:
+            if any((n,key[1],key[3],key[4],key[5])==cohort[:5] and key[2]<cohort[5] for cohort in self.initial_registration_cohorts):
+                self.contexts[key]={'registered':True};self.seeded_initial.add(key)
         return self.contexts.get(key,{})
 
     def send_attempt(self,pr):
@@ -150,9 +157,10 @@ class FiveGSimulation(ProcedureSimulation):
         return 'success'
 
     def app_arrival(self,msg):
-        if msg.get('category') in ('control','userplane'):return super().app_arrival(msg)
+        if msg.get('category') in ('control','userplane','mobility'):return super().app_arrival(msg)
         if msg.get('rpc_id') is None:return super().app_arrival(msg)
         frame=self.rpcs[msg['rpc_id']];pr=self.procedures[frame['procedure']];spec=frame['spec']
+        if pr.get('mobility_obsolete'):return
         self.message_finished+=1
         self.reservoir(self.message_traces,dict(time=msg['start']/1000,end=self.t/1000,procedure_id=pr['id'],session_id=pr['session'],
             transaction_id=f'{pr["id"]}:rpc-{frame["id"]}',role=msg['role'],operation=msg['operation'],protocol=msg['protocol'],
@@ -177,18 +185,21 @@ class FiveGSimulation(ProcedureSimulation):
         if key in self.cache:
             self.node_stats[frame['dst']]['duplicates']+=1;self.reply_wire(frame,self.cache[key]);return
         epoch=self.node_epoch[frame['dst']]
-        if frame['server_started'] and frame['server_epoch']==epoch:
+        if frame['server_started'] and frame['server_epoch']==epoch and frame['reply'] is None:
             self.node_stats[frame['dst']]['duplicates']+=1;return
         frame['server_started']=True;frame['server_epoch']=epoch;frame['index']=0;frame['reply']=None
-        result=self.validate_request(pr,frame)
+        from .resources import CapacityError
+        try:result=msg.get('resource_error') or self.validate_request(pr,frame)
+        except CapacityError:result='context_limit'
         if result=='success' and spec['query']:
             kind,service=spec['query'];selected=self.select_nf(pr,kind,service)
             if selected is None:result='nf_not_found'
             else:pr['nf_selected'][kind]=selected
-        if result!='success':self.node_stats[frame['dst']]['errors']+=1;self.respond(frame,result)
+        if result!='success':self.respond(frame,result)
         else:self.next_child(frame)
 
     def next_child(self,frame):
+        if self.procedures[frame['procedure']].get('mobility_obsolete'):return
         if frame['server_epoch']!=self.node_epoch[frame['dst']]:return
         specs=frame['spec']['children']
         while frame['index']<len(specs):
@@ -200,14 +211,18 @@ class FiveGSimulation(ProcedureSimulation):
     def respond(self,frame,result):
         if frame['server_epoch']!=self.node_epoch[frame['dst']]:return
         pr=self.procedures[frame['procedure']];op=frame['spec']['operation']
-        if result=='success':
-            ctx=self.contexts.setdefault(self.context_key(pr,frame['dst']),{})
-            if op=='Nausf UEAuthentication':ctx['authenticated']=True
-            elif op=='5G Registration':ctx['registered']=True
-            elif op=='Nsmf CreateSMContext':ctx['sm_context']=True
-            elif op=='PFCP Session Establishment':ctx['n4_session']=True
-            elif op=='PFCP Session Modification' and not ctx.get('n4_session'):result='session_context_lost'
-            elif op=='5G PDU Session':ctx['pdu_active']=True
+        if pr.get('mobility_obsolete'):return
+        flags={'Nausf UEAuthentication':'authenticated','5G Registration':'registered','Nsmf CreateSMContext':'sm_context','PFCP Session Establishment':'n4_session','5G PDU Session':'pdu_active','Nudm UECMRegistration':'ue_registered','Npcf SMPolicyCreate':'policy_active'}
+        if result=='success' and op=='5G PDU Session' and not self.contexts.get(self.context_key(pr,frame['dst']),{}).get('registered'):result='not_registered'
+        if result=='success' and op=='PFCP Session Modification' and not self.contexts.get(self.context_key(pr,frame['dst']),{}).get('n4_session'):result='session_context_lost'
+        if result=='success' and op in flags:
+            from .resources import CapacityError
+            try:ctx=self.contexts.setdefault(self.context_key(pr,frame['dst']),{})
+            except CapacityError:ctx=None;result='context_limit'
+        if result=='success' and op in flags:
+            ctx[flags[op]]=True
+            self.contexts[self.context_key(pr,frame['dst'])]=ctx
+        if result!='success':self.node_stats[frame['dst']]['errors']+=1
         frame['reply']=result;self.cache[('5g',frame['dst'],pr['id'],frame['id'])]=result
         self.reply_wire(frame,result)
 
@@ -237,20 +252,19 @@ class FiveGSimulation(ProcedureSimulation):
 
     def node_fault(self,n,kind):
         super().node_fault(n,kind)
+        self.user_plane.policy.node_fault(n)
         if kind=='node_restart':
             self.restarted_nodes.add(n)
-            self.contexts={key:val for key,val in self.contexts.items() if key[0]!=n}
-            self.cache={key:val for key,val in self.cache.items() if not(key[0]=='5g' and key[1]==n)}
 
     def report(self):
         result=super().report()
         self.user_plane.report(result)
         result['fiveg']=dict(profile='5G SA behavioural control plane',services=self.service_stats,
-            contexts=dict(Counter(k for value in self.contexts.values() for k,v in value.items() if v)),
+            contexts=dict(Counter(k for value in self.contexts.values() for k,v in value.items() if v and not k.startswith('_'))),
             nf_profiles=[dict(id=n.id,kind=n.kind,status=n.nf_status,services=n.services or SERVICES.get(n.kind,[]),plmn=n.plmn,slices=n.slices,dnns=n.dnns) for n in self.nodes.values() if n.kind in SERVICES])
         for trace in result['traces']:
             pr=self.procedures[trace['procedure_id']]
             if pr['flow'].operation.startswith('5G '):
                 trace.update(snssai=pr['flow'].snssai,dnn=pr['flow'].dnn,nf_selected=pr['nf_selected'])
-                trace['route']=next((p for p in pr['routes'] if p[0]==pr['flow'].source and p[-1]==pr['flow'].target),[])
+                origin=pr.get('origin_flow',pr['flow']);trace['route']=next((p for p in pr['routes'] if p[0]==origin.source and p[-1]==origin.target),[])
         return result

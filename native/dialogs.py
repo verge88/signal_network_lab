@@ -37,6 +37,8 @@ class Editor(QDialog):
             elif hasattr(w,'currentData'):result[key]=w.currentData()
             else:result[key]=w.value()
         if result.get('observer_detection_ms',0) is not None and result.get('observer_detection_ms',0)<0:result['observer_detection_ms']=None
+        if result.get('shutdown_at_s',0) is not None and result.get('shutdown_at_s',0)<0:result['shutdown_at_s']=None
+        if 'peer_routing_context' in result:result['peer_routing_context']=int(result['peer_routing_context']) if result['peer_routing_context'] else None
         return result
 
 
@@ -63,6 +65,15 @@ def node_editor(parent,node=None):
     d.field('plmn','PLMN (MCC+MNC)',QLineEdit(n['plmn']));d.field('nf_status','Регистрация NF',combo(['REGISTERED','SUSPENDED'],n['nf_status']))
     for key,title in [('slices','Поддерживаемые S-NSSAI'),('dnns','Поддерживаемые DNN'),('services','Сервисы (пусто = по типу NF)')]:
         w=QPlainTextEdit(json.dumps(n[key],ensure_ascii=False,indent=2));w.setMaximumHeight(105);d.field(key,title,w)
+    d.tab('БД, кэш и контексты')
+    d.field('storage_model','Модель БД',combo([('queued','Пул соединений и конечный кэш'),('probabilistic','Сравнение: вероятность попадания')],n['storage_model']))
+    d.numeric(n,[('db_connections','Соединений БД',1,128,0,''),('db_queue_limit','Очередь БД',0,10000,0,''),('db_timeout_ms','Тайм-аут БД',1,60000,1,'ms'),('cache_entries','Записей кэша данных',0,100000,0,''),('cache_ttl_s','TTL данных',.01,86400,2,'s'),('context_limit','Контекстов на узел',1,1000000,0,''),('context_ttl_s','TTL контекста',.01,86400,2,'s'),('transaction_cache_limit','Кэш ответов: записей',0,100000,0,''),('transaction_cache_ttl_s','Кэш ответов: TTL',.01,86400,2,'s')])
+    d.tab('5G · Правила UPF')
+    from .service_lists import ConfigList
+    project=getattr(parent,'project',{})
+    d.field('upf_default_action','При отсутствии правила',combo([('forward','Пересылать'),('drop','Отбросить')],n['upf_default_action']))
+    d.numeric(n,[('upf_rate_mbps','Скорость по умолчанию (0 = без лимита)',0,100000,4,'Mbps'),('upf_burst_bytes','Бюджет всплеска',32,10000000,0,'B'),('upf_queue_limit','Очередь шейпера',0,10000,0,'')])
+    d.field('upf_rules','Правила выбора и QoS',ConfigList(d,project,'upf',n['upf_rules']))
     return d
 
 
@@ -82,6 +93,8 @@ def link_editor(parent,project,link=None):
     d.numeric(l,[('routing_context','M3UA Routing Context',0,2147483647,0,''),('startup_ms','Установление ассоциации',0,30000,1,'ms'),('detection_ms','Обнаружение отказа',0,30000,1,'ms'),('switch_ms','Переключение маршрута',0,10000,1,'ms'),('recovery_ms','Восстановление доступности',0,30000,1,'ms')])
     d.tab('Управляющий обмен')
     d.numeric(l,[('heartbeat_ms','Интервал heartbeat / watchdog',50,60000,1,'ms'),('control_timeout_ms','Таймер управляющего запроса',10,30000,1,'ms'),('control_retries','Повторы управляющего запроса',0,4,0,''),('reconnect_ms','Пауза восстановления ассоциации',10,30000,1,'ms'),('control_bytes','Размер управляющего сообщения',32,9000,0,'B')])
+    d.field('peer_routing_context','M3UA: routing context пира (пусто = тот же)',QLineEdit('' if l['peer_routing_context'] is None else str(l['peer_routing_context'])))
+    d.field('shutdown_at_s','Штатное закрытие (-1 = не закрывать)',spin(-1 if l['shutdown_at_s'] is None else l['shutdown_at_s'],-1,599,2,'s'))
     return d
 
 
@@ -112,6 +125,11 @@ def flow_editor(parent,project,flow=None):
     enabled=QCheckBox();enabled.setChecked(f['user_plane_enabled']);d.field('user_plane_enabled','Проверять передачу после PDU',enabled)
     d.field('data_network','Сеть данных',combo([('','Автоматически по DNN')]+[(n['id'],n['name']) for n in project['nodes'] if n['kind']=='DN'],f['data_network']))
     d.numeric(f,[('data_packets','Проверочных пакетов на сессию',1,1000,0,''),('data_interval_ms','Интервал пакетов',1,60000,1,'ms'),('data_bytes','Полезная нагрузка пакета',32,65536,0,'B'),('data_timeout_ms','Таймер проверки доставки',1,30000,1,'ms')])
+    d.field('application_profile','Профиль приложения',combo([('probe','Равномерные проверки'),('interactive','Интерактивный · случайные интервалы'),('video','Видео · активность / паузы'),('bulk','Передача файла · интенсивный поток')],f['application_profile']))
+    d.numeric(f,[('video_on_s','Видео: активность',.01,600,2,'s'),('video_off_s','Видео: пауза',0,600,2,'s'),('data_priority','Приоритет данных (0 = высший)',0,2,0,''),('qos_budget_ms','Бюджет RTT (0 = не оценивать)',0,60000,1,'ms'),('session_lifetime_s','Срок PDU (0 = только TTL)',0,86400,2,'s')])
+    d.tab('5G · Мобильность')
+    from .service_lists import ConfigList
+    d.field('mobility','Перемещения группы UE',ConfigList(d,project,'mobility',f['mobility']))
     def operation_changed():
         op=d.fields['operation'].currentData();proto='NGAP' if op.startswith('5G ') else 'Diameter' if op.startswith('Diameter') else 'M3UA'
         d.fields['protocol'].setCurrentIndex(d.fields['protocol'].findData(proto))
