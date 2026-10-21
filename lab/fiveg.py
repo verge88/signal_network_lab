@@ -1,7 +1,7 @@
 """Offline 5G SA control-plane workflows with nested, resource-bearing RPCs.
 
 Models selected dependencies, not NAS/NGAP/HTTP2/PFCP wire compatibility.
-UE cohorts are represented by a gNB; radio and user-plane data are omitted.
+UE cohorts are represented by a gNB; the radio interface remains abstract.
 """
 from collections import Counter
 from .procedures import ProcedureSimulation
@@ -19,6 +19,9 @@ OP_SERVICE={
     'Nnssf NSSelection':'nnssf-nsselection', 'Nsmf CreateSMContext':'nsmf-pdusession',
     'Nsmf UpdateSMContext':'nsmf-pdusession', 'Npcf SMPolicyCreate':'npcf-smpolicycontrol',
     'PFCP Session Establishment':'n4-pfcp', 'PFCP Session Modification':'n4-pfcp',
+    'PFCP Session Deletion':'n4-pfcp','Nsmf ReleaseSMContext':'nsmf-pdusession',
+    'Npcf SMPolicyDelete':'npcf-smpolicycontrol','Nudm UECMDeregistration':'nudm-uecm',
+    'Nausf AuthenticationContextRelease':'nausf-auth',
 }
 
 
@@ -38,6 +41,8 @@ class FiveGSimulation(ProcedureSimulation):
         self.user_plane=UserPlane(self)
         from .mobility import Mobility
         self.mobility=Mobility(self)
+        from .sessions import SessionLifecycle
+        self.session_lifecycle=SessionLifecycle(self)
 
     def prepare(self):super().prepare();self.mobility.prepare()
 
@@ -81,6 +86,8 @@ class FiveGSimulation(ProcedureSimulation):
         return call(source,'@NRF','Nnrf NFDiscovery',query=(kind,service)) if pr['flow'].use_nrf else None
 
     def plan(self,pr,operation):
+        if operation=='5G PDU Session Release':return self.session_lifecycle.release_specs(pr['release_owner'])['children']
+        if operation=='5G Deregistration':return [] # Built when the request reaches its AMF.
         auth=call('@AMF','@AUSF','Nausf UEAuthentication',[
             self.discovery(pr,'@AUSF','UDM','nudm-ueau'),
             call('@AUSF','@UDM','Nudm UEAuthentication',[call('@UDM','@UDR','Nudr Query')])])
@@ -105,7 +112,7 @@ class FiveGSimulation(ProcedureSimulation):
 
     def registration_context(self,pr,n):
         key=self.context_key(pr,n)
-        if key not in self.contexts and key not in self.seeded_initial and n not in self.restarted_nodes and self.t<self.nodes[n].context_ttl_s*1000:
+        if self.session_lifecycle.ue(pr) not in self.session_lifecycle.blocked and key not in self.contexts and key not in self.seeded_initial and n not in self.restarted_nodes and self.t<self.nodes[n].context_ttl_s*1000:
             if any((n,key[1],key[3],key[4],key[5])==cohort[:5] and key[2]<cohort[5] for cohort in self.initial_registration_cohorts):
                 self.contexts[key]={'registered':True};self.seeded_initial.add(key)
         return self.contexts.get(key,{})
@@ -114,16 +121,30 @@ class FiveGSimulation(ProcedureSimulation):
         if not pr['flow'].operation.startswith('5G '):return super().send_attempt(pr)
         if 'nf_selected' not in pr:
             pr['nf_selected']={};pr['roots']=[]
+            pr['ue_epoch']=self.session_lifecycle.epochs[self.session_lifecycle.ue(pr)]
             pr['steps']=['5G Registration','5G PDU Session'] if '+' in pr['flow'].operation else [pr['flow'].operation]
         operation=pr['steps'][pr['step']]
+        if operation=='5G PDU Session':
+            error=self.session_lifecycle.reserve(pr)
+            if error:self.finish(pr,error);return
+        elif operation=='5G PDU Session Release':
+            owner=self.session_lifecycle.find(pr)
+            if owner is None:self.finish(pr,'session_not_found');return
+            pr['release_owner']=owner;pr['pdu_session_id']=self.session_lifecycle.records[owner]['pdu_session_id']
+            self.session_lifecycle.begin_release(owner,'explicit_release')
         spec=call(pr['flow'].source,pr['flow'].target,operation,self.plan(pr,operation),protocol='NGAP')
+        if operation=='5G PDU Session Release':spec['pdu_owner']=pr['release_owner']
         frame=self.start_rpc(pr,spec,None);pr['roots'].append(frame['id'])
 
-    def start_rpc(self,pr,spec,parent):
+    def start_rpc(self,pr,spec,parent,lifecycle_id=None):
+        if parent is not None:
+            for key in ('dereg_epoch','dereg_ue'):
+                if key in self.rpcs[parent]['spec']:spec[key]=self.rpcs[parent]['spec'][key]
         self.rpc_seq+=1
         src=self.resolve(pr,spec['source']);dst=self.resolve(pr,spec['target'],OP_SERVICE.get(spec['operation']))
         frame=dict(id=self.rpc_seq,procedure=pr['id'],step=pr['step'],spec=spec,src=src,dst=dst,parent=parent,
-            attempt=0,token=0,closed=False,server_started=False,server_epoch=None,index=0,reply=None)
+            attempt=0,token=0,closed=False,server_started=False,server_epoch=None,index=0,reply=None,
+            lifecycle_id=self.rpcs[parent]['lifecycle_id'] if parent is not None else lifecycle_id)
         self.rpcs[frame['id']]=frame
         stat=self.service_stats.setdefault(spec['operation'],dict(requests=0,success=0,errors=0,timeouts=0))
         frame['stat']=stat
@@ -149,6 +170,8 @@ class FiveGSimulation(ProcedureSimulation):
 
     def validate_request(self,pr,frame):
         n=self.nodes[frame['dst']];f=pr['flow'];op=frame['spec']['operation']
+        owner=frame['spec'].get('pdu_owner')
+        if owner is not None:f=self.procedures[owner]['flow']
         if n.plmn!=f.plmn:return 'plmn_not_supported'
         if f.snssai.lower() not in [s.lower() for s in n.slices]:return 'slice_not_supported'
         if n.kind in ('SMF','UPF','PCF') and f.dnn not in n.dnns:return 'dnn_not_supported'
@@ -156,7 +179,8 @@ class FiveGSimulation(ProcedureSimulation):
         service=OP_SERVICE.get(op)
         if service and service not in (n.services or SERVICES.get(n.kind,[])):return 'nf_service_unavailable'
         if op=='5G PDU Session' and not self.registration_context(pr,frame['dst']).get('registered'):return 'not_registered'
-        if op=='Nsmf UpdateSMContext' and not self.contexts.get(self.context_key(pr,frame['dst']),{}).get('sm_context'):return 'session_context_lost'
+        if op=='Nsmf UpdateSMContext' and not self.session_lifecycle.context(pr['id'],frame['dst']).get('sm_context'):return 'session_context_lost'
+        if op=='5G Registration' and self.session_lifecycle.ue(pr) in self.session_lifecycle.deregistering:return 'deregistration_in_progress'
         if self.rng.random()<self.application_error(n.id):return 'protocol_error'
         return 'success'
 
@@ -166,26 +190,32 @@ class FiveGSimulation(ProcedureSimulation):
         frame=self.rpcs[msg['rpc_id']];pr=self.procedures[frame['procedure']];spec=frame['spec']
         event=self.journal.message(msg,'message_arrived',node=msg['target'],result=msg['result'],elapsed_ms=self.t-msg['start'],parent_rpc=frame['parent'])
         if event:pr['_journal_event']=event
-        if pr.get('mobility_obsolete'):return
+        if pr.get('mobility_obsolete') and frame['lifecycle_id'] is None:return
         self.message_finished+=1
         self.reservoir(self.message_traces,dict(time=msg['start']/1000,end=self.t/1000,procedure_id=pr['id'],session_id=pr['session'],
             transaction_id=f'{pr["id"]}:rpc-{frame["id"]}',role=msg['role'],operation=msg['operation'],protocol=msg['protocol'],
-            source=msg['source'],target=msg['target'],bytes=msg['size'],result=msg['result'],snssai=pr['flow'].snssai,dnn=pr['flow'].dnn),self.message_finished)
+            source=msg['source'],target=msg['target'],bytes=msg['size'],result=msg['result'],snssai=pr['flow'].snssai,dnn=pr['flow'].dnn,
+            pdu_session_id=self.session_lifecycle.records.get(spec.get('pdu_owner'),{}).get('pdu_session_id',pr.get('pdu_session_id'))),self.message_finished)
         if msg['role']=='answer':
             if frame['closed']:return
             self.journal.emit(pr['id'],'timer_cancelled',cause=frame.get('_journal_timer'),timer_id=f'rpc:{frame["id"]}:{frame["token"]}',timer_type='rpc',rpc_id=frame['id'],reason='answer_received',message_id=msg['id'])
             frame['closed']=True;result=msg['result']
             frame['stat']['success' if result=='success' else 'errors']+=1
             if frame['parent'] is None:
+                if frame['lifecycle_id'] is not None:
+                    self.session_lifecycle.transaction_done(frame['lifecycle_id'],result);return
                 if not pr['active'] or pr['step']!=frame['step']:return
-                if result=='success' and spec['operation']=='5G PDU Session':self.user_plane.start(pr)
+                if result=='success' and spec['operation']=='5G PDU Session':
+                    if self.session_lifecycle.activate(pr):self.user_plane.start(pr)
+                    else:result='session_context_lost'
                 if result!='success':pr['last_cause']=result;self.finish(pr,result)
                 elif pr['step']+1<len(pr['steps']):pr['step']+=1;self.send_attempt(pr)
                 else:self.finish(pr,'delivered')
             else:
                 parent=self.rpcs[frame['parent']]
                 if parent.get('waiting')!=frame['id'] or parent['server_epoch']!=self.node_epoch[parent['dst']] or parent['reply'] is not None:return
-                if result!='success':self.respond(parent,result)
+                if result!='success' and not parent['spec'].get('continue_on_error'):self.respond(parent,result)
+                elif result!='success':parent['child_error']=result;self.next_child(parent)
                 else:self.next_child(parent)
             return
         key=('5g',frame['dst'],pr['id'],frame['id'])
@@ -203,32 +233,56 @@ class FiveGSimulation(ProcedureSimulation):
             if selected is None:result='nf_not_found'
             else:pr['nf_selected'][kind]=selected
         if result!='success':self.respond(frame,result)
-        else:self.next_child(frame)
+        else:
+            if spec['operation']=='5G Deregistration':
+                error=self.session_lifecycle.begin_deregister(pr)
+                if error:self.respond(frame,error);return
+                spec['dereg_epoch']=pr['deregistration_epoch'];spec['dereg_ue']=self.session_lifecycle.ue(pr)
+                spec['children']=self.session_lifecycle.deregister_plan(pr)
+            self.next_child(frame)
 
     def next_child(self,frame):
-        if self.procedures[frame['procedure']].get('mobility_obsolete'):return
+        if self.procedures[frame['procedure']].get('mobility_obsolete') and frame['lifecycle_id'] is None:return
         if frame['server_epoch']!=self.node_epoch[frame['dst']]:return
         specs=frame['spec']['children']
         while frame['index']<len(specs):
             spec=specs[frame['index']];frame['index']+=1
             if spec is not None:
                 child=self.start_rpc(self.procedures[frame['procedure']],spec,frame['id']);frame['waiting']=child['id'];return
-        self.respond(frame,'success')
+        self.respond(frame,frame.get('child_error','success'))
 
     def respond(self,frame,result):
         if frame['server_epoch']!=self.node_epoch[frame['dst']]:return
         pr=self.procedures[frame['procedure']];op=frame['spec']['operation']
-        if pr.get('mobility_obsolete'):return
+        if pr.get('mobility_obsolete') and frame['lifecycle_id'] is None:return
         flags={'Nausf UEAuthentication':'authenticated','5G Registration':'registered','Nsmf CreateSMContext':'sm_context','PFCP Session Establishment':'n4_session','5G PDU Session':'pdu_active','Nudm UECMRegistration':'ue_registered','Npcf SMPolicyCreate':'policy_active'}
+        if result=='success' and 'dereg_epoch' in frame['spec'] and frame['spec']['dereg_epoch']!=self.session_lifecycle.epochs[tuple(frame['spec']['dereg_ue'])]:result='stale_deregistration'
         if result=='success' and op=='5G PDU Session' and not self.contexts.get(self.context_key(pr,frame['dst']),{}).get('registered'):result='not_registered'
-        if result=='success' and op=='PFCP Session Modification' and not self.contexts.get(self.context_key(pr,frame['dst']),{}).get('n4_session'):result='session_context_lost'
+        if result=='success' and op=='PFCP Session Modification' and not self.session_lifecycle.context(pr['id'],frame['dst']).get('n4_session'):result='session_context_lost'
+        session_flags={'Nsmf CreateSMContext','PFCP Session Establishment','5G PDU Session','Npcf SMPolicyCreate'}
         if result=='success' and op in flags:
+            if op in session_flags and not self.session_lifecycle.valid_write(pr):result='session_context_fenced'
+            elif op not in session_flags and pr.get('ue_epoch')!=self.session_lifecycle.epochs[self.session_lifecycle.ue(pr)]:result='registration_context_fenced'
+        if result=='success' and op in flags and op not in session_flags:
             from .resources import CapacityError
             try:ctx=self.contexts.setdefault(self.context_key(pr,frame['dst']),{})
             except CapacityError:ctx=None;result='context_limit'
-        if result=='success' and op in flags:
+        if result=='success' and op in session_flags:
+            from .resources import CapacityError
+            try:self.session_lifecycle.write(pr,frame['dst'],flags[op])
+            except (CapacityError,ValueError):result='pdu_context_limit'
+        elif result=='success' and op in flags:
             ctx[flags[op]]=True
             self.contexts[self.context_key(pr,frame['dst'])]=ctx
+        if result=='success':
+            owner=frame['spec'].get('pdu_owner')
+            if owner is not None:
+                node=self.procedures[owner]['flow'].target if op=='NGAP PDUResourceRelease' else frame['dst']
+                if op in ('PFCP Session Deletion','Npcf SMPolicyDelete','Nsmf ReleaseSMContext','5G PDU Session Release'):
+                    self.session_lifecycle.delete(owner,node);self.session_lifecycle.complete_release(owner)
+            if op in ('Nudm UECMDeregistration','Nausf AuthenticationContextRelease'):self.session_lifecycle.delete_registration(pr,frame['dst'])
+            if op=='5G Deregistration':self.session_lifecycle.deregister_complete(pr)
+            if op=='5G Registration':self.session_lifecycle.registered(pr)
         if result!='success':self.node_stats[frame['dst']]['errors']+=1
         frame['reply']=result;self.cache[('5g',frame['dst'],pr['id'],frame['id'])]=result
         self.reply_wire(frame,result)
@@ -244,7 +298,7 @@ class FiveGSimulation(ProcedureSimulation):
         ident,token=data;frame=self.rpcs[ident]
         if frame['closed'] or frame['token']!=token:return
         pr=self.procedures[frame['procedure']]
-        if frame['parent'] is None and (not pr['active'] or pr['step']!=frame['step']):return
+        if frame['parent'] is None and frame['lifecycle_id'] is None and (not pr['active'] or pr['step']!=frame['step']):return
         if kind=='rpc_retry':self.transmit_rpc(frame);return
         expired=self.journal.emit(pr['id'],'timer_expired',cause=frame.get('_journal_timer'),timer_id=f'rpc:{ident}:{token}',timer_type='rpc',rpc_id=ident,operation=frame['spec']['operation'],reason='no_answer_before_deadline')
         pr['_journal_event']=expired
@@ -255,10 +309,17 @@ class FiveGSimulation(ProcedureSimulation):
         else:
             frame['closed']=True;frame['stat']['timeouts']+=1
             if frame['parent'] is None:
-                if pr['active']:self.finish(pr,'timeout')
+                if frame['lifecycle_id'] is not None:self.session_lifecycle.transaction_done(frame['lifecycle_id'],'timeout')
+                elif pr['active']:self.finish(pr,'timeout')
             else:
                 parent=self.rpcs[frame['parent']]
-                if parent.get('waiting')==ident and parent['reply'] is None:self.respond(parent,'service_timeout')
+                if parent.get('waiting')==ident and parent['reply'] is None:
+                    if parent['spec'].get('continue_on_error'):parent['child_error']='service_timeout';self.next_child(parent)
+                    else:self.respond(parent,'service_timeout')
+
+    def finish(self,pr,status):
+        super().finish(pr,status)
+        self.session_lifecycle.on_finish(pr,status)
 
     def node_fault(self,n,kind):
         super().node_fault(n,kind)
@@ -270,11 +331,12 @@ class FiveGSimulation(ProcedureSimulation):
         result=super().report()
         self.user_plane.report(result)
         result['fiveg']=dict(profile='5G SA behavioural control plane',services=self.service_stats,
-            contexts=dict(Counter(k for value in self.contexts.values() for k,v in value.items() if v and not k.startswith('_'))),
+            contexts=dict(Counter(k for store in (self.contexts,self.session_lifecycle.store) for value in store.values() for k,v in value.items() if v and k!='owner' and not k.startswith('_'))),
             nf_profiles=[dict(id=n.id,kind=n.kind,status=n.nf_status,services=n.services or SERVICES.get(n.kind,[]),plmn=n.plmn,slices=n.slices,dnns=n.dnns) for n in self.nodes.values() if n.kind in SERVICES])
+        result['session_lifecycle']=self.session_lifecycle.report()
         for trace in result['traces']:
             pr=self.procedures[trace['procedure_id']]
             if pr['flow'].operation.startswith('5G '):
-                trace.update(snssai=pr['flow'].snssai,dnn=pr['flow'].dnn,nf_selected=pr['nf_selected'])
+                trace.update(snssai=pr['flow'].snssai,dnn=pr['flow'].dnn,nf_selected=pr['nf_selected'],pdu_session_id=pr.get('pdu_session_id'))
                 origin=pr.get('origin_flow',pr['flow']);trace['route']=next((p for p in pr['routes'] if p[0]==origin.source and p[-1]==origin.target),[])
         return result

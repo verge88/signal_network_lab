@@ -16,11 +16,7 @@ class UserPlane:
         if not f.user_plane_enabled:return
         upf=pr['nf_selected'].get('UPF') or self.e.resolve(pr,'@UPF')
         dn=f.data_network or next((n.id for n in self.e.nodes.values() if n.kind=='DN' and f.dnn in n.dnns),'')
-        self.sessions[pr['id']]=dict(upf=upf,dn=dn,smf=pr['nf_selected'].get('SMF'))
-        for n in (f.target,upf,pr['nf_selected'].get('SMF'),pr['nf_selected'].get('PCF')):
-            if n:
-                key=self.e.context_key(pr,n);ctx=self.e.contexts.get(key)
-                if ctx is not None:ctx['_lease']=pr['id'];self.e.contexts[key]=ctx
+        self.sessions[pr['id']]=dict(upf=upf,dn=dn,smf=pr['nf_selected'].get('SMF'),pdu_session_id=pr['pdu_session_id'])
         rng=np.random.default_rng(self.e.p.seed^pr['id']^0xDA7A);offset=0.
         for index in range(f.data_packets):
             if index:
@@ -31,7 +27,6 @@ class UserPlane:
                     if phase>=f.video_on_s*1000:offset+=cycle-phase
             at=self.e.t+offset
             if at<self.e.p.duration*1000:self.e.push(at,'user_send',pr['id'])
-        if f.session_lifetime_s and self.e.t+f.session_lifetime_s*1000<=self.e.p.duration*1000:self.e.push(self.e.t+f.session_lifetime_s*1000,'user_release',pr['id'],0)
 
     def finish(self,packet,status):
         if packet['closed']:return
@@ -41,7 +36,7 @@ class UserPlane:
         if status=='delivered':self.windows[e.window(packet['start'])]['delivered']+=1;self.windows[e.window(packet['start'])]['rtt'].append(elapsed)
         budget=e.procedures[packet['procedure']]['flow'].qos_budget_ms;packet['qos_met']=status=='delivered' and (not budget or elapsed<=budget)
         e.telemetry.data_finish(packet)
-        self.completed+=1;e.reservoir(self.traces,dict(time=packet['start']/1000,end=e.t/1000,packet_id=packet['id'],procedure_id=packet['procedure'],status=status,rtt_ms=elapsed,bytes=packet['bytes'],upf=packet['upf'],dn=packet['dn'],qos_met=packet['qos_met'],rules=packet.get('rules',[])),self.completed)
+        self.completed+=1;e.reservoir(self.traces,dict(time=packet['start']/1000,end=e.t/1000,packet_id=packet['id'],procedure_id=packet['procedure'],pdu_session_id=packet['pdu_session_id'],status=status,rtt_ms=elapsed,bytes=packet['bytes'],upf=packet['upf'],dn=packet['dn'],qos_met=packet['qos_met'],rules=packet.get('rules',[])),self.completed)
 
     def send_leg(self,packet,src,dst,protocol,leg):
         if packet['closed']:return
@@ -52,19 +47,21 @@ class UserPlane:
 
     def context_valid(self,packet):
         e=self.e;pr=e.procedures[packet['procedure']];f=pr['flow']
-        upf=e.contexts.get(e.context_key(pr,packet['upf']),{}) if packet['upf'] else {};amf=e.contexts.get(e.context_key(pr,f.target),{})
-        return bool(not e.mobility.busy(f.id) and not self.sessions[pr['id']].get('released') and upf.get('n4_session') and amf.get('pdu_active') and all(ctx.get('_lease',pr['id'])==pr['id'] for ctx in (upf,amf)))
+        upf=e.session_lifecycle.context(pr['id'],packet['upf']);amf=e.session_lifecycle.context(pr['id'],f.target)
+        record=e.session_lifecycle.records[pr['id']]
+        return bool(record['state']=='ACTIVE' and not e.mobility.busy(f.id) and not self.sessions[pr['id']].get('released') and upf.get('n4_session') and amf.get('pdu_active') and all(ctx.get('owner')==pr['id'] for ctx in (upf,amf)))
 
     def release(self,ident):
-        e=self.e;pr=e.procedures[ident];session=self.sessions[ident];session['released']=True;self.released+=1
-        for node,flags in [(pr['flow'].target,('pdu_active',)),(session['upf'],('n4_session',)),(session['smf'],('sm_context',)),(pr['nf_selected'].get('PCF'),('policy_active',))]:
-            if not node:continue
-            key=e.context_key(pr,node);ctx=e.contexts.get(key)
-            if ctx is None or ctx.get('_lease',ident)!=ident:continue
-            for flag in flags:ctx.pop(flag,None)
-            ctx.pop('_lease',None)
-            if ctx:e.contexts[key]=ctx
-            else:e.contexts.pop(key,None)
+        self.e.session_lifecycle.start_cleanup(ident,'explicit_release')
+
+    def stop(self,ident,completed=False):
+        session=self.sessions.get(ident)
+        if session is None:return
+        session['released']=True
+        if completed and not session.get('release_confirmed'):
+            session['release_confirmed']=True;self.released+=1
+        for packet in list(self.packets.values()):
+            if packet['procedure']==ident and not packet['closed']:self.finish(packet,'session_released')
 
     def event(self,kind,data):
         e=self.e
@@ -74,6 +71,7 @@ class UserPlane:
             if not self.packets[data]['closed']:self.finish(self.packets[data],'user_plane_timeout')
             return
         pr=e.procedures[data];f=pr['flow'];session=self.sessions[data];self.seq+=1
+        if session.get('released'):return
         packet=dict(id=self.seq,procedure=data,start=e.t,deadline=e.t+f.data_timeout_ms,bytes=f.data_bytes,closed=False,mobility_epoch=e.mobility.epochs.get(f.id,0),**session)
         self.packets[self.seq]=packet;self.windows[e.window(e.t)]['sent']+=1
         e.telemetry.count('data_sent');e.telemetry.gauge('data_inflight',1)

@@ -45,12 +45,18 @@ class ProcedureJournal:
         f=pr['flow']
         for node in self.e.nodes:
             for name,key in [('subscriber_contexts',(node,f.source,pr['subscriber'])),('fiveg_contexts',(node,f.source,pr['subscriber'],f.plmn,f.snssai.lower(),f.dnn))]:
-                token=(name,key);self.watchers[token].add(pid)
-                store=self.e.storage.stores.get(name);item=store.data.get(key) if store is not None else None
-                if item is not None:
-                    value=deepcopy(item[0]);self.shadow[token]=(value,item[1])
-                    initial=self.emit(pid,'context_initial',node=node,store=name,context_key=list(key),after=value,deadline_ms=item[1])
-                    self.context_timers[(pid,token)]=self.emit(pid,'timer_set',cause=initial,timer_id=f'context:{name}:{key}',timer_type='context',deadline_ms=item[1],node=node)
+                self.watch_context(pr,name,key)
+    def watch_context(self,pr,name,key):
+        pid=pr['id']
+        if pid not in self.sessions:return
+        token=(name,key)
+        if pid in self.watchers[token]:return
+        self.watchers[token].add(pid)
+        store=self.e.storage.stores.get(name);item=store.data.get(key) if store is not None else None
+        if item is not None:
+            value=deepcopy(item[0]);self.shadow[token]=(value,item[1])
+            initial=self.emit(pid,'context_initial',node=key[0],store=name,context_key=list(key),after=value,deadline_ms=item[1])
+            self.context_timers[(pid,token)]=self.emit(pid,'timer_set',cause=initial,timer_id=f'context:{name}:{key}',timer_type='context',deadline_ms=item[1],node=key[0])
     def message(self,msg,kind,cause=None,advance=True,**details):
         pid=msg['procedure']
         if pid not in self.sessions:return None
@@ -103,6 +109,7 @@ class ProcedureJournal:
         if kind.startswith('rpc_'):return e.rpcs[data[0]]['procedure']
         if kind in ('resource_db_done','resource_db_timeout'):return e.storage.tasks[data]['msg']['procedure']
         if kind=='user_release':return data
+        if kind.startswith('session_'):return data
         return None
     def report(self):
         return dict(version=VERSION,policy='forced procedure' if self.e.p.journal_procedure_id is not None else 'uniform reservoir over admitted procedures; independent RNG',

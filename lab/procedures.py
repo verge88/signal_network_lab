@@ -12,7 +12,7 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import CancelledError
 import numpy as np
 
-ENGINE_VERSION = '2.7.0'
+ENGINE_VERSION = '2.8.0'
 CONTRACT = 'procedures-v2'
 ANSWERS = {'MAP UpdateLocation': 'MAP UpdateLocationResult',
            'MAP SendAuthenticationInfo': 'MAP AuthenticationInfoResult',
@@ -774,8 +774,10 @@ class ProcedureSimulation:
             elif kind.startswith('user_'):self.user_plane.event(kind,data)
             elif kind.startswith('resource_'):self.storage.event(kind,data)
             elif kind.startswith('mobility_'):self.mobility.event(kind,data)
+            elif kind.startswith('session_'):self.session_lifecycle.event(kind,data)
             self.journal.actor=None
             if self.steps>12000000: raise ValueError('Превышен лимит 12 млн событий; уменьшите нагрузку, размеры или число повторов')
+        self.reporting=True
         result=self.report();result['control_plane']=self.control.report()
         result['resources']=self.storage.report()
         result['config_sha256']=hashlib.sha256(json.dumps(self.original_project.model_dump(),sort_keys=True).encode()).hexdigest()

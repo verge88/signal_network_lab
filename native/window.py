@@ -165,6 +165,7 @@ class MainWindow(QMainWindow):
         self.menu_action(research_menu,'Конструктор атак',lambda:self.show_page(6),'Ctrl+Shift+A')
         self.menu_action(research_menu,'Проверка достоверности…',self.show_validation)
         self.menu_action(research_menu,'Пошаговый разбор процедуры…',self.show_procedure)
+        self.menu_action(research_menu,'Жизненный цикл 5G-сессий…',self.show_session_lifecycle)
         self.help_action=self.menu_action(help_menu,'Руководство пользователя',self.show_help,'F1')
         self.menu_action(templates,'5G · мобильность и QoS',lambda:self.new_project('5g-mobile'))
         self.menu_action(help_menu,'Основы сигнальных сетей',lambda:self.show_help('Основы сигнальных сетей'))
@@ -180,6 +181,13 @@ class MainWindow(QMainWindow):
             from .validation_dialog import ValidationDialog
             self.validation_dialog=ValidationDialog(self)
         self.validation_dialog.reload_history();self.validation_dialog.show();self.validation_dialog.raise_();self.validation_dialog.activateWindow()
+    def show_session_lifecycle(self):
+        if not self.run_record:raise ValueError('Сначала выполните эксперимент или выберите сохранённый прогон')
+        if not getattr(self,'session_dialog',None):
+            from .session_dialog import SessionDialog
+            self.session_dialog=SessionDialog(self)
+        self.session_dialog.set_run(self.run_record);self.session_dialog.show();self.session_dialog.raise_();self.session_dialog.activateWindow()
+
     def show_procedure(self,procedure_id=None):
         if not self.run_record:raise ValueError('Сначала выполните или выберите сохранённый прогон')
         if procedure_id is None:
@@ -374,6 +382,7 @@ class MainWindow(QMainWindow):
         chart,cc,ch=panel('Измерения по времени');self.telemetry_metric=combo([(x,FEATURE_NAMES[x]) for x in FEATURE_NAMES],'latency_p95');ch.addWidget(self.telemetry_metric);ch.addWidget(self.action_button('Экспорт…',lambda:self.export_visuals('telemetry_chart'),'download'));ch.addWidget(self.action_button('Окна CSV',self.export_windows,'download'));self.telemetry_chart=Chart();self.telemetry_chart.setMinimumHeight(200);cc.addWidget(self.telemetry_chart);split.addWidget(chart)
         log,lc,lh=panel('Журнал прохождения сообщений');self.trace_search=QLineEdit();self.trace_search.setPlaceholderText('Поиск по узлу, операции или статусу');lh.addWidget(self.trace_search);self.trace_filter=combo([('all','Все статусы'),('delivered','Доставлено'),('failed','Не доставлено')]);lh.addWidget(self.trace_filter)
         lh.addWidget(self.action_button('Разобрать процедуру',self.show_procedure,'chart'))
+        lh.addWidget(self.action_button('PDU-сессии',self.show_session_lifecycle,'topology'))
         trace_page=QWidget();trace_layout=QVBoxLayout(trace_page);trace_layout.setContentsMargins(0,8,0,0)
         self.trace_table=table(['Время, s','Протокол','Операция','Маршрут','Задержка, ms','Статус','Процедура / этапы','Повторы']);trace_layout.addWidget(self.trace_table,1);self.trace_note=label('Равномерная выборка завершённых процедур. Агрегаты включают весь прогон.','Muted');self.trace_note.setWordWrap(True);trace_layout.addWidget(self.trace_note)
         self.details_tabs=QTabWidget();self.details_tabs.addTab(trace_page,'Транзакции');lc.addWidget(self.details_tabs,1)
@@ -888,7 +897,7 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.12.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.13.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return

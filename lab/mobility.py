@@ -46,21 +46,37 @@ class Mobility:
         family={fid:flow for fid,flow in self.current.items() if (flow.source,flow.target,flow.plmn,flow.snssai.lower(),flow.dnn)==(old.source,old.target,old.plmn,old.snssai.lower(),old.dnn)}
         cohort_size=max(flow.subscribers for flow in family.values());moves=[]
         if m.transfer_context:
-            for key,value in list(e.contexts.items()):
-                if key[1]!=old.source or key[3:]!=(old.plmn,old.snssai.lower(),old.dnn) or key[2]>=cohort_size:continue
-                node=new.target if key[0]==old.target else m.upf if m.upf and e.nodes[key[0]].kind=='UPF' else key[0]
-                dest=(node,new.source,*key[2:]);moves.append((key,dest,deepcopy(value)))
-            counts={n:len(o) for n,o in e.contexts.orders.items()}
-            old_keys={k for k,_,_ in moves};new_keys={k for _,k,_ in moves}
-            if any(dest in e.contexts and dest not in old_keys and e.contexts[dest]!=value for _,dest,value in moves):self.finish(tx,'context_conflict');return
-            for key in old_keys-new_keys:counts[key[0]]=counts.get(key[0],0)-1
-            for key in new_keys-old_keys:
-                if key not in e.contexts:counts[key[0]]=counts.get(key[0],0)+1
-            if any(v>e.nodes[n].context_limit for n,v in counts.items()):self.finish(tx,'context_limit');return
-            for key,_,_ in moves:e.contexts.pop(key,None)
-            for _,key,value in moves:e.contexts[key]=value
-            e.initial_registration_cohorts=[(new.target,new.source,*c[2:]) if c[0]==old.target and c[1]==old.source else c for c in e.initial_registration_cohorts]
-            e.seeded_initial.update(dest for _,dest,_ in moves)
+            lifecycle=e.session_lifecycle
+            for owner,record in lifecycle.records.items():
+                flow=e.procedures[owner]['flow']
+                if record['state']=='RELEASED' or flow.id not in family:continue
+                destination=((new.source,record['ue'][1],record['ue'][2]),record['pdu_session_id'])
+                if lifecycle.index.get(destination,owner)!=owner:self.finish(tx,'context_conflict');return
+            for record in lifecycle.records.values():
+                if record['ue'][0]==old.source and record['state'] in ('RELEASING','RECONCILING','ORPHANED'):
+                    self.finish(tx,'session_cleanup_in_progress');return
+            for store in (e.contexts,lifecycle.store):
+                group=[]
+                for key,value in list(store.items()):
+                    if key[1]!=old.source or key[3:6]!=(old.plmn,old.snssai.lower(),old.dnn) or key[2]>=cohort_size:continue
+                    node=new.target if key[0]==old.target else m.upf if m.upf and e.nodes[key[0]].kind=='UPF' else key[0]
+                    dest=(node,new.source,*key[2:]);group.append((store,key,dest,deepcopy(value)))
+                counts={n:len(o) for n,o in store.orders.items()}
+                old_keys={k for _,k,_,_ in group};new_keys={k for _,_,k,_ in group}
+                if any(dest in store and dest not in old_keys and store[dest]!=value for _,_,dest,value in group):self.finish(tx,'context_conflict');return
+                for key in old_keys-new_keys:counts[key[0]]=counts.get(key[0],0)-1
+                for key in new_keys-old_keys:
+                    if key not in store:counts[key[0]]=counts.get(key[0],0)+1
+                if any(v>store.limit(e.nodes[n]) for n,v in counts.items()):self.finish(tx,'context_limit');return
+                moves.extend(group)
+            lifecycle.suppress+=1
+            try:
+                for store,key,_,_ in moves:store.pop(key,None)
+                for store,_,key,value in moves:store[key]=value
+            finally:lifecycle.suppress-=1
+            lifecycle.rehome(old,new)
+            e.initial_registration_cohorts=[(new.target,new.source,*c[2:]) if c[:5]==(old.target,old.source,old.plmn,old.snssai.lower(),old.dnn) else c for c in e.initial_registration_cohorts]
+            e.seeded_initial.update(dest for store,_,dest,_ in moves if store is e.contexts)
         for fid,flow in family.items():
             binds=dict(flow.nf_bindings)
             if m.upf:binds['UPF']=m.upf
@@ -68,14 +84,16 @@ class Mobility:
             if fid!=old.id:self.epochs[fid]=self.epochs.get(fid,0)+1
         for pr in e.procedures.values():
             if pr.get('control') or pr['flow'].id not in family:continue
-            if pr['active']:pr['mobility_obsolete']=True;e.finish(pr,'mobility_relocation')
-            elif pr['id'] not in e.user_plane.sessions:pr['mobility_obsolete']=True
             pr.setdefault('origin_flow',pr['flow'])
             pr['flow']=self.current[pr['flow'].id]
             if 'destination' in pr:pr['destination']=new.target
             session=e.user_plane.sessions.get(pr['id'])
             if session and m.upf:session['upf']=m.upf
             if m.upf and 'nf_selected' in pr:pr['nf_selected']['UPF']=m.upf
+            if pr['active']:pr['mobility_obsolete']=True;e.finish(pr,'mobility_relocation')
+            elif pr['id'] not in e.user_plane.sessions:pr['mobility_obsolete']=True
+            for node in e.nodes:
+                if pr['id'] in e.session_lifecycle.records:e.journal.watch_context(pr,'pdu_contexts',e.session_lifecycle.context_key(pr['id'],node))
         self.finish(tx,'completed')
     def finish(self,tx,status):
         if tx['closed']:return

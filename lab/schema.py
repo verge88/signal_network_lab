@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 NODE_KINDS=['MSC','STP','SG','HLR','MME','DRA','HSS','SCP','gNB','AMF','SMF','UPF','AUSF','UDM','UDR','PCF','NRF','NSSF','SCP5G','DN']
 LINK_PROTOCOLS=['SS7','M3UA','Diameter','NGAP','SBI','PFCP','GTPU','IP']
 FLOW_PROTOCOLS=['SS7','M3UA','Diameter','NGAP']
-FIVEG_OPERATIONS=['5G Registration','5G PDU Session','5G Registration + PDU Session']
+FIVEG_OPERATIONS=['5G Registration','5G PDU Session','5G Registration + PDU Session','5G PDU Session Release','5G Deregistration']
 OPERATIONS=['MAP UpdateLocation','MAP SendAuthenticationInfo','ISUP IAM','Diameter ULR','Diameter AIR','Diameter CCR',*FIVEG_OPERATIONS]
 
 
@@ -73,6 +73,7 @@ class Node(BaseModel):
     cache_entries: int=Field(default=1000,ge=0,le=100000)
     cache_ttl_s: float=Field(default=60,gt=0,le=86400)
     context_limit: int=Field(default=10000,ge=1,le=1000000)
+    pdu_session_limit: int=Field(default=10000,ge=1,le=1000000)
     context_ttl_s: float=Field(default=300,gt=0,le=86400)
     transaction_cache_limit: int=Field(default=10000,ge=0,le=100000)
     transaction_cache_ttl_s: float=Field(default=30,gt=0,le=86400)
@@ -135,7 +136,7 @@ class Flow(BaseModel):
     source: str
     target: str
     protocol: Literal['SS7', 'M3UA', 'Diameter','NGAP'] = 'M3UA'
-    operation: Literal['MAP UpdateLocation', 'MAP SendAuthenticationInfo', 'ISUP IAM', 'Diameter ULR', 'Diameter AIR', 'Diameter CCR','5G Registration','5G PDU Session','5G Registration + PDU Session'] = 'MAP UpdateLocation'
+    operation: Literal['MAP UpdateLocation', 'MAP SendAuthenticationInfo', 'ISUP IAM', 'Diameter ULR', 'Diameter AIR', 'Diameter CCR','5G Registration','5G PDU Session','5G Registration + PDU Session','5G PDU Session Release','5G Deregistration'] = 'MAP UpdateLocation'
     rate: float = Field(default=30, ge=0, le=3000)
     message_bytes: int = Field(default=256, ge=32, le=65536)
     timeout_ms: float = Field(default=1000, ge=1, le=30000)
@@ -176,10 +177,16 @@ class Flow(BaseModel):
     data_priority: int=Field(default=1,ge=0,le=2)
     qos_budget_ms: float=Field(default=0,ge=0,le=60000)
     session_lifetime_s: float=Field(default=30,ge=0,le=86400)
+    pdu_session_id: int=Field(default=1,ge=1,le=15)
+    pdu_session_count: int=Field(default=1,ge=1,le=15)
+    session_cleanup_retries: int=Field(default=3,ge=0,le=20)
+    session_cleanup_retry_s: float=Field(default=1,ge=.1,le=60)
+    deregister_after_s: float=Field(default=0,ge=0,le=86400)
     mobility: list[MobilityEvent]=Field(default_factory=list,max_length=12)
 
     @model_validator(mode='after')
     def procedure_compatible(self):
+        if self.pdu_session_id+self.pdu_session_count>16:raise ValueError('Диапазон PDU Session ID должен помещаться в 1–15')
         if (self.operation in FIVEG_OPERATIONS)!=(self.protocol=='NGAP'):
             raise ValueError('Операции 5G требуют домен NGAP; для NGAP выберите процедуру 5G')
         if self.procedure=='registration' and self.operation not in ('MAP UpdateLocation','Diameter ULR'):

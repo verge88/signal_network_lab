@@ -43,11 +43,12 @@ class TimedStore(MutableMapping):
     def __len__(self):self.purge();return len(self.data)
     def remove(self,key,reason):
         if key in self.data:
-            self.data.pop(key);self.orders[self.node_key(key)].pop(key,None);self.stats[reason]+=1
+            removed=self.data.pop(key)[0];self.orders[self.node_key(key)].pop(key,None);self.stats[reason]+=1
             if hasattr(self.e,'telemetry'):
                 category='cache' if self.evict else 'context';self.e.telemetry.gauge(category,-1)
                 self.e.telemetry.count(category+'_'+reason)
             if getattr(self.e,'journal',None):self.e.journal.store_change(self.name,key,None,None,reason)
+            if hasattr(self.e,'session_lifecycle'):self.e.session_lifecycle.context_removed(self.name,key,removed,reason)
     def purge(self,node=None):
         while self.expirations and self.expirations[0][0]<=self.e.t:
             _,token,key=heapq.heappop(self.expirations);self.expire(key,token)

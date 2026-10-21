@@ -116,7 +116,10 @@ class UserPlaneTests(unittest.TestCase):
         p.incidents=[Incident(kind='node_restart',target='upf',start=5,duration=1,detection_ms=0,recovery_ms=0)]
         r=self.run_one(p)
         self.assertEqual(r['summary']['delivered'],1);self.assertGreater(r['user_plane']['delivered'],0)
-        self.assertIn('user_plane_context_lost',r['user_plane']['failure_reasons'])
+        self.assertTrue(all(t['time']<5 for t in r['user_plane']['traces']))
+        self.assertEqual(r['session_lifecycle']['remaining_contexts'],0)
+        self.assertEqual(r['session_lifecycle']['states'],{'RELEASED':1})
+        self.assertTrue(any(event['reason']=='restart_cleared' for event in r['session_lifecycle']['events']))
 
     def test_reproducibility_includes_control_and_data(self):
         p=self.config();self.assertEqual(self.run_one(p),self.run_one(p))

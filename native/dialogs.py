@@ -68,6 +68,7 @@ def node_editor(parent,node=None):
     d.tab('БД, кэш и контексты')
     d.field('storage_model','Модель БД',combo([('queued','Пул соединений и конечный кэш'),('probabilistic','Сравнение: вероятность попадания')],n['storage_model']))
     d.numeric(n,[('db_connections','Соединений БД',1,128,0,''),('db_queue_limit','Очередь БД',0,10000,0,''),('db_timeout_ms','Тайм-аут БД',1,60000,1,'ms'),('cache_entries','Записей кэша данных',0,100000,0,''),('cache_ttl_s','TTL данных',.01,86400,2,'s'),('context_limit','Контекстов на узел',1,1000000,0,''),('context_ttl_s','TTL контекста',.01,86400,2,'s'),('transaction_cache_limit','Кэш ответов: записей',0,100000,0,''),('transaction_cache_ttl_s','Кэш ответов: TTL',.01,86400,2,'s')])
+    d.numeric(n,[('pdu_session_limit','Контекстов PDU-сессий на узел',1,1000000,0,'')])
     d.tab('5G · Правила UPF')
     from .service_lists import ConfigList
     project=getattr(parent,'project',{})
@@ -126,7 +127,9 @@ def flow_editor(parent,project,flow=None):
     d.field('data_network','Сеть данных',combo([('','Автоматически по DNN')]+[(n['id'],n['name']) for n in project['nodes'] if n['kind']=='DN'],f['data_network']))
     d.numeric(f,[('data_packets','Проверочных пакетов на сессию',1,1000,0,''),('data_interval_ms','Интервал пакетов',1,60000,1,'ms'),('data_bytes','Полезная нагрузка пакета',32,65536,0,'B'),('data_timeout_ms','Таймер проверки доставки',1,30000,1,'ms')])
     d.field('application_profile','Профиль приложения',combo([('probe','Равномерные проверки'),('interactive','Интерактивный · случайные интервалы'),('video','Видео · активность / паузы'),('bulk','Передача файла · интенсивный поток')],f['application_profile']))
-    d.numeric(f,[('video_on_s','Видео: активность',.01,600,2,'s'),('video_off_s','Видео: пауза',0,600,2,'s'),('data_priority','Приоритет данных (0 = высший)',0,2,0,''),('qos_budget_ms','Бюджет RTT (0 = не оценивать)',0,60000,1,'ms'),('session_lifetime_s','Срок PDU (0 = только TTL)',0,86400,2,'s')])
+    d.numeric(f,[('video_on_s','Видео: активность',.01,600,2,'s'),('video_off_s','Видео: пауза',0,600,2,'s'),('data_priority','Приоритет данных (0 = высший)',0,2,0,''),('qos_budget_ms','Бюджет RTT (0 = не оценивать)',0,60000,1,'ms')])
+    d.tab('5G · Жизненный цикл')
+    d.numeric(f,[('pdu_session_id','Первый PDU Session ID',1,15,0,''),('pdu_session_count','Количество доступных ID на UE',1,15,0,''),('session_lifetime_s','Сигнальное освобождение через (0 = только TTL)',0,86400,2,'s'),('deregister_after_s','Отмена регистрации через (0 = вручную)',0,86400,2,'s'),('session_cleanup_retries','Повторных попыток очистки',0,20,0,''),('session_cleanup_retry_s','Интервал согласования после ошибки',.1,60,2,'s')])
     d.tab('5G · Мобильность')
     from .service_lists import ConfigList
     d.field('mobility','Перемещения группы UE',ConfigList(d,project,'mobility',f['mobility']))

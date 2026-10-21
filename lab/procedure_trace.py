@@ -11,6 +11,7 @@ KINDS=dict(procedure_start='Начало процедуры',procedure_finished=
     context_changed='Изменение контекста',nf_selected='Выбрана функция 5G',gtt_translation='Локальный перевод GTT',gtt_forward='Передача к узлу GTT',node_fault='Отказ узла')
 KINDS.update(cpu_aborted='CPU прерван отказом',cpu_queue_aborted='Очередь CPU прервана отказом')
 KINDS['user_data_finished']='Завершён пользовательский пакет'
+KINDS['pdu_state']='Состояние PDU-сессии'
 FIELDS=dict(node='Узел',source='Отправитель',target='Адресат',receiver='Получатель перехода',message_id='Сообщение',rpc_id='RPC',parent_rpc='Родительский RPC',
     operation='Операция',protocol='Протокол',role='Роль',reason='Причина',result='Результат',status='Статус',bytes='Размер, B',queue_depth='Глубина очереди',
     wait_ms='Ожидание, ms',service_ms='Обработка, ms',done_ms='Запланировано завершение, ms',deadline_ms='Срок таймера, ms',timer_id='Таймер',timer_type='Тип таймера',
@@ -25,6 +26,7 @@ FIELDS=dict(node='Узел',source='Отправитель',target='Адреса
     service='Сервис',pinned='Закреплённый экземпляр',global_title='Global Title',matching_prefix='Префикс GTT',translated_target='Адресат после GTT',next_hop='Следующий переход',
     subscriber='Абонент',category='Категория',chunks='Фрагментов',stream='Поток транспорта',pending_gtt='Ожидается перевод GTT',forwarder='Маршрутизатор')
 FIELDS.update(user_packet_id='Пользовательский пакет',rtt_ms='RTT, ms',embedded_database_ms='БД внутри CPU, ms',admission_wait_ms='Ожидание допуска транспорта, ms')
+FIELDS.update(pdu_session_id='PDU Session ID',state='Состояние сессии')
 
 
 def title(event):return KINDS.get(event['kind'],event['kind'])

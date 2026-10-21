@@ -448,6 +448,53 @@ class SmokeTest(QObject):
             assert not w.draw_link_button.isChecked() and not w.draw_link_action.isChecked()
             self.completed.append('mouse link creation: port drag in all themes, two-click mode, prefilled dialog, cancellation, unchanged positions and undo/redo')
         finally:w.graph.set_connection_mode(False);w.apply_theme(original_theme,persist=False)
+    def verify_session_lifecycle(self):
+        from lab.presets import preset
+        from lab.schema import Incident
+        from lab.fiveg import FiveGSimulation
+        from .export_dialog import ExportDialog
+        from .exporting import export_file
+        w=self.window;previous=w.run_record;theme=w.theme
+        p=preset('5g');p.duration=10;p.window=1;p.control_plane=False;p.routing_knowledge='shared';p.trace_limit=1000
+        p.flows=[next(f for f in p.flows if f.operation=='5G PDU Session')];f=p.flows[0]
+        f.rate=0;f.subscribers=1;f.pdu_session_count=2;f.session_lifetime_s=1;f.max_retries=0;f.service_timeout_ms=100;f.timeout_ms=400;f.session_cleanup_retries=1;f.session_cleanup_retry_s=.1
+        second=f.model_copy(deep=True);second.id='second';second.pdu_session_id=2;second.pdu_session_count=1;second.session_lifetime_s=0;p.flows.append(second)
+        for link in p.links:link.loss=0;link.jitter_ms=0
+        p.incidents=[Incident(kind='node_down',target='upf',start=.8,duration=9,detection_ms=0,recovery_ms=0)]
+        class Scheduled(FiveGSimulation):
+            def prepare(self):
+                super().prepare();self.total=2
+                self.push(100,'new',(1,self.p.flows[0]));self.push(300,'new',(2,self.p.flows[1]))
+        result=dict(id='pdu-lifecycle-fixture',name='Две сессии UE · частичное освобождение при отказе UPF',project=p.model_dump(),**Scheduled(p).run())
+        w.run_record=result
+        try:
+            editor=flow_editor(w,p.model_dump(),p.flows[0].model_dump());assert editor.fields['pdu_session_count'].value()==2
+            assert editor.fields['operation'].findData('5G Deregistration')>=0 and editor.fields['operation'].findData('5G PDU Session Release')>=0
+            assert editor.fields['session_cleanup_retries'].value()==1;editor.close();editor.deleteLater()
+            editor=node_editor(w,p.nodes[1].model_dump());assert editor.fields['pdu_session_limit'].value()==p.nodes[1].pdu_session_limit;editor.close();editor.deleteLater()
+            w.show_session_lifecycle();dialog=w.session_dialog
+            assert dialog.sessions.rowCount()==2 and result['session_lifecycle']['states']=={'ORPHANED':1,'ACTIVE':1}
+            dialog.state.setCurrentIndex(dialog.state.findData('ORPHANED'));assert dialog.sessions.rowCount()==1
+            dialog.sessions.selectRow(0);assert dialog.selected_owner()==1 and dialog.contexts.rowCount()==1 and dialog.contexts.item(0,0).text()=='upf'
+            dialog.open_procedure();assert w.procedure_dialog.sessions.currentData()==1 and w.procedure_dialog.run_record['id']==result['id'];w.procedure_dialog.close()
+            dialog.state.setCurrentIndex(0);dialog.search.setText('несуществующий');assert dialog.sessions.rowCount()==0 and dialog.contexts.rowCount()==0
+            dialog.search.clear()
+            for name in ('monochrome','light_monochrome','dark','graphite','porcelain'):
+                w.apply_theme(name,persist=False);dialog.show();self.app.processEvents()
+                if self.output:dialog.grab().save(str(self.output/f'{name}-session-lifecycle.png'))
+            dialog.sessions.selectRow(0);dialog.tabs.setCurrentIndex(1);self.app.processEvents()
+            if self.output:
+                dialog.grab().save(str(self.output/'session-orphaned-context.png'))
+                (self.output/'session-lifecycle.json').write_text(json.dumps(result['session_lifecycle'],ensure_ascii=False,indent=2),encoding='utf-8')
+            export=ExportDialog(dialog,dialog.export_sources());assert len(export.sources)==3 and len(export.data().rows)==2
+            if self.output:
+                for fmt in ('csv','json','xlsx','html','pdf'):export_file(self.output/('pdu-sessions.'+fmt),export.data(),export.style(),fmt)
+            export.close();export.deleteLater()
+            dialog.set_run(dict(id='legacy',project=p.model_dump()));assert dialog.sessions.rowCount()==0 and 'не содержит' in dialog.summary.text() and 'старого прогона' in dialog.note.text()
+            dialog.set_run(result);dialog.close()
+            self.completed.append('5G lifecycle: per-UE PDU IDs, native flow/node controls, orphan-resource inspection, state/search filters, recorded procedure navigation, legacy runs and styled exports in five themes')
+        finally:w.run_record=previous;w.apply_theme(theme,persist=False)
+
     def verify_protocol_regressions(self):
         from lab.procedures import ProcedureSimulation,ENGINE_VERSION
         from lab.fiveg import FiveGSimulation
@@ -614,7 +661,7 @@ class SmokeTest(QObject):
                     w.details_tabs.setCurrentIndex(index);self.app.processEvents();self.capture(name)
                 self.completed.append('5G SA native topology, NF/flow editors, registration, PDU sessions and service telemetry')
                 self.completed.append('resource-bearing management, per-observer routing knowledge, N3/N6 user traffic and native telemetry')
-                self.verify_themes();self.verify_exports();w.show_page(0);w.undo.setClean()
+                self.verify_session_lifecycle();self.verify_themes();self.verify_exports();w.show_page(0);w.undo.setClean()
                 w.mutate('Проверка закрытия с историей',lambda p:p['nodes'][0].update(capacity=p['nodes'][0]['capacity']+1))
                 assert not w.undo.isClean()
                 self.completed.append('shutdown regression: destroy the actual main window with dirty undo history and reject exceptions raised during final cleanup')
