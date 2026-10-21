@@ -1,10 +1,12 @@
 import re
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPalette
 from PySide6.QtCore import Qt, QRectF
+from .theme_palettes import EDITOR_PALETTES,LEGACY_ROLES
 
 COLORS=dict(bg='#11151c',panel='#191f29',raised='#212a36',line='#2c3746',text='#e5ebf5',muted='#8c9bb0',accent='#8fe0c2',blue='#82adfa',orange='#e7b375',red='#ed8c93')
 
 THEMES={'monochrome':'Чёрно-белая · Pure Black','light_monochrome':'Светлая · Монохром','dark':'Тёмная · Signal'}
+THEMES.update((key,palette['name']) for key,palette in EDITOR_PALETTES.items())
 _current_theme='monochrome'
 
 # Semantic overrides keep surfaces truly black and primary actions white.
@@ -58,6 +60,18 @@ def saved_theme(settings):
 
 def themed_color(*args):
     value=QColor(*args)
+    if _current_theme in EDITOR_PALETTES and value.isValid():
+        palette=EDITOR_PALETTES[_current_theme];source=value.name().lower()
+        # Draw helpers also receive already-resolved colors; keep them stable.
+        if source in palette.values():return value
+        role=LEGACY_ROLES.get(source)
+        if role is None:
+            # Translucent chart fills use RGB constructors, not CSS literals.
+            hue,saturation,lightness,_=value.getHslF()
+            if saturation>.2 and lightness>.28:
+                role='red' if hue<.06 or hue>.92 else 'gold' if hue<.18 else 'teal' if hue<.48 else 'blue'
+            else:role='grid' if lightness<.22 else 'border' if lightness<.4 else 'muted' if lightness<.75 else 'text'
+        result=QColor(palette[role]);result.setAlpha(value.alpha());return result
     if _current_theme in ('monochrome','light_monochrome') and value.isValid():
         # Painter colors can pass through this function twice (e.g. node icons
         # and chart gradients). Already-neutral colors must remain unchanged.
@@ -76,7 +90,19 @@ def themed_stylesheet(source):
     return re.sub(r'#[0-9a-fA-F]{6}',lambda m:themed_color(m.group()).name(),source)
 
 
-def stylesheet():return themed_stylesheet(STYLESHEET)
+def stylesheet():
+    source=themed_stylesheet(STYLESHEET)
+    if _current_theme in EDITOR_PALETTES:
+        p=EDITOR_PALETTES[_current_theme]
+        source+='''
+QPushButton#Primary {{ background: {accent}; color: {on_accent}; border-color: {accent}; }}
+QPushButton#Primary:hover {{ background: {accent_hover}; border-color: {accent_hover}; }}
+QPushButton#Primary:disabled {{ background: {raised}; color: {disabled}; border-color: {border}; }}
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{ selection-background-color: {selection}; selection-color: {selection_text}; }}
+QStatusBar {{ background: {accent}; color: {on_accent}; }}
+QStatusBar QLabel {{ color: {on_accent}; }}
+'''.format(**p)
+    return source
 
 
 def application_palette():
@@ -84,6 +110,11 @@ def application_palette():
     for role,value in [(QPalette.ColorRole.Window,'#11151c'),(QPalette.ColorRole.WindowText,'#e5ebf5'),(QPalette.ColorRole.Base,'#171e28'),(QPalette.ColorRole.AlternateBase,'#1b2430'),(QPalette.ColorRole.Text,'#e5ebf5'),(QPalette.ColorRole.Button,'#232c39'),(QPalette.ColorRole.ButtonText,'#d6e4f7'),(QPalette.ColorRole.Highlight,'#356354'),(QPalette.ColorRole.HighlightedText,'#102b23' if _current_theme in ('monochrome','light_monochrome') else '#e5ebf5'),(QPalette.ColorRole.ToolTipBase,'#151a23'),(QPalette.ColorRole.ToolTipText,'#e5ebf5'),(QPalette.ColorRole.PlaceholderText,'#8c9bb0')]:
         p.setColor(role,themed_color(value))
     for role in (QPalette.ColorRole.Text,QPalette.ColorRole.ButtonText,QPalette.ColorRole.WindowText):p.setColor(QPalette.ColorGroup.Disabled,role,themed_color('#566376'))
+    if _current_theme in EDITOR_PALETTES:
+        colors=EDITOR_PALETTES[_current_theme]
+        p.setColor(QPalette.ColorRole.HighlightedText,QColor(colors['selection_text']))
+        p.setColor(QPalette.ColorRole.Link,QColor(colors['accent_text']))
+        p.setColor(QPalette.ColorRole.LinkVisited,QColor(colors['blue']))
     return p
 
 

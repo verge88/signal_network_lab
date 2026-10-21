@@ -47,11 +47,11 @@ class SmokeTest(QObject):
         settings_path=str(storage.DATA/'theme-self-test.ini')
         try:
             w.settings=QSettings(settings_path,QSettings.Format.IniFormat)
-            for name in ('dark','monochrome','light_monochrome'):
+            for name in ('dark','monochrome','light_monochrome','graphite','porcelain'):
                 w.apply_theme(name);w.set_sidebar_collapsed(False,persist=False);w.set_overview_height(125,persist=False)
                 assert saved_theme(QSettings(settings_path,QSettings.Format.IniFormat))==name
                 self.capture_node_icons(name)
-                for page,title in enumerate(('topology','experiments','telemetry','ml','results','help')):
+                for page,title in enumerate(('topology','experiments','telemetry','ml','results','help','attacks')):
                     w.show_page(page);self.app.processEvents()
                     if name in ('monochrome','light_monochrome'):
                         background='#ffffff' if name=='light_monochrome' else '#000000'
@@ -65,7 +65,21 @@ class SmokeTest(QObject):
                         assert float(np.all(rgb==channel,axis=2).mean())>.5, f'Incorrect {name} background on {title}'
                         text=self.app.palette().color(QPalette.ColorRole.Text)
                         assert (text.lightness()<40) if name=='light_monochrome' else (text.lightness()>200)
+                    if name in ('graphite','porcelain'):
+                        from .theme_palettes import EDITOR_PALETTES
+                        colors=EDITOR_PALETTES[name]
+                        assert self.app.palette().color(QPalette.ColorRole.Window).name()==colors['bg']
+                        assert self.app.palette().color(QPalette.ColorRole.Text).name()==colors['text']
+                        assert w.graph.backgroundBrush().color().name()==colors['bg']
                     self.capture(f'{name}-{title}')
+                if name in ('graphite','porcelain'):
+                    from .palette_dialog import PaletteDialog
+                    dialog=PaletteDialog(w,name,lambda key:w.apply_theme(key,persist=False))
+                    dialog.show();self.app.processEvents()
+                    assert len(dialog.swatches)==22 and dialog.selector.currentData()==name
+                    if self.output:dialog.grab().save(str(self.output/f'{name}-palette.png'))
+                    dialog.apply_button.click();assert w.theme==name
+                    dialog.close();dialog.deleteLater();self.app.processEvents()
                 w.show_page(0);self.app.processEvents();expanded_width=w.pages.width()
                 w.sidebar_toggle.click();self.app.processEvents()
                 assert w.sidebar_collapsed and w.pages.width()>expanded_width
@@ -102,6 +116,7 @@ class SmokeTest(QObject):
             assert json.dumps(w.project,sort_keys=True)==project
             assert w.selected==selection and w.undo.count()==undo_count
             self.completed.append('pure-black and light monochrome themes, neutral rendering on all seven pages including the handbook and attack designer and saved theme')
+            self.completed.append('Graphite and Porcelain: all seven pages, colored topology, saved theme, 22 exact palette swatches and native theme application')
             self.completed.append('collapsible sidebar, icon navigation, tooltips, menu toggle and persisted state across all themes')
             self.completed.append('compact overview, real mouse resizing, numeric height dialog, saved height and page-switch restoration across all themes')
         finally:
@@ -114,6 +129,7 @@ class SmokeTest(QObject):
             assert not gc.isenabled() and self.app.gui_collector.collect()
             self.completed.append('Python cyclic collection is scheduled on the GUI thread; automatic collection in simulation workers is disabled')
             self.verify_protocol_regressions()
+            self.verify_validation()
             self.verify_handbook()
             self.verify_attacks()
             self.verify_resource_services()
@@ -197,12 +213,52 @@ class SmokeTest(QObject):
             while w.undo.index()>history:w.undo.undo()
             assert json.dumps(w.project,sort_keys=True)==before
             w.run_record=None;w.apply_theme(theme,persist=False);w.show_page(0)
+    def verify_validation(self):
+        from lab.schema import Project,Incident
+        from lab.validation import synthetic_example,validate,report_html
+        from lab.procedures import ProcedureSimulation
+        from .validation_dialog import ValidationOptions
+        from .export_dialog import ExportDialog
+        from .exporting import chart_data,export_file,ExportStyle
+        w=self.window;theme=w.theme;before=json.dumps(w.project,sort_keys=True)
+        p=Project(name='Проверка сравнения',duration=10,window=1,control_plane=False,routing_knowledge='distributed',
+            nodes=[dict(id='a',name='Access',kind='MME',x=0,y=0,processing_ms=0,capacity=100000),dict(id='b',name='HSS',kind='HSS',x=300,y=0,processing_ms=0,capacity=100000)],
+            links=[dict(id='ab',source='a',target='b',protocol='Diameter',latency_ms=10,jitter_ms=0,loss=0,bandwidth_mbps=1000)],
+            flows=[dict(id='f',source='a',target='b',protocol='Diameter',operation='Diameter ULR',rate=8,max_retries=0)])
+        example=synthetic_example(p);result=validate(p,example['text'],options=dict(seeds=1,min_samples=20,expected_conditions=[dict(scenario='нет измерений',offered_rate=40)]))
+        assert not result['hardware_accuracy_proven'] and result['conditions'][-1]['status']=='insufficient'
+        p.incidents=[Incident(kind='node_down',target='b',start=2,duration=3,detection_ms=0,recovery_ms=0),Incident(kind='node_down',target='b',start=3,duration=4,detection_ms=0,recovery_ms=0)]
+        for node in p.nodes:node.switch_ms=0
+        faults=ProcedureSimulation(p).run()['control_plane']['view_events']
+        assert not [event for event in faults if event['resource']=='node' and event['target']=='b' and event['up'] and 2<=event['time']<7]
+        self.completed.append('overlapping node outages [2,5) and [3,7) do not advertise recovery before 7 seconds')
+        try:
+            w.show_validation();dialog=w.validation_dialog;dialog.set_measurements(example['text'],'Синтетические измерения');dialog.accept_result(result,'Проверка сравнения')
+            assert dialog.conditions.rowCount()==2 and len(dialog.export_sources())==4
+            for name in ('monochrome','light_monochrome','dark','graphite','porcelain'):
+                w.apply_theme(name,persist=False);dialog.tabs.setCurrentIndex(0);dialog.show();self.app.processEvents()
+                if self.output:dialog.grab().save(str(self.output/f'{name}-validation.png'))
+                dialog.tabs.setCurrentIndex(2);self.app.processEvents()
+                if self.output:dialog.grab().save(str(self.output/f'{name}-validation-coverage.png'))
+            options=ValidationOptions(dialog,dialog.options);options.show();self.app.processEvents()
+            if self.output:options.grab().save(str(self.output/'validation-options.png'))
+            options.close();options.deleteLater()
+            exporter=ExportDialog(dialog,dialog.export_sources(),initial='validation_cdf');assert exporter.source_combo.count()==4;exporter.close();exporter.deleteLater()
+            if self.output:
+                (self.output/'validation-measurements-synthetic.csv').write_text(example['text'],encoding='utf-8-sig')
+                (self.output/'validation-report.html').write_text(report_html(result),encoding='utf-8')
+                (self.output/'validation-report.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+                export_file(self.output/'validation-cdf.svg',chart_data(dialog.cdf_chart,'Распределение задержек','Задержка, ms','Накопленная доля'),ExportStyle(),'svg')
+            self.completed.append('measured-network validation: frozen tolerances, ECDF/time overlays, load/failure coverage and missing evidence, saved reports, all five themes and styled graph/table export')
+        finally:
+            if getattr(w,'validation_dialog',None):w.validation_dialog.hide()
+            w.apply_theme(theme,persist=False);assert json.dumps(w.project,sort_keys=True)==before
     def verify_startup(self):
-        from .startup import StartupSplash
+        from .startup import StartupSplash,SPLASH_COLORS
         state=self.app.startup_state
         assert all(state[key] for key in ('splash_shown','before_window_import','before_ml_import','main_window_visible','completed','splash_hidden')),str(state)
         assert not self.app.startup_splash.isVisible()
-        for theme in ('dark','monochrome','light_monochrome'):
+        for theme in SPLASH_COLORS:
             splash=StartupSplash(theme);splash.show_startup();splash.update_status('Подготовка интерфейса…')
             assert splash.isVisible() and splash.width()==400 and splash.height()==176
             QTest.mouseClick(splash,Qt.MouseButton.LeftButton,pos=QPoint(150,90));assert splash.isVisible()
@@ -226,7 +282,7 @@ class SmokeTest(QObject):
         w.show_page(0);w.set_topology_expanded(True);w.activateWindow();w.graph.setFocus();self.app.processEvents();QTest.keyClick(w.graph,Qt.Key.Key_F1);self.app.processEvents()
         assert w.pages.currentIndex()==5 and not w.topology_expanded
         w.show_help('Начало работы');w.show_page(0)
-        self.completed.append('offline handbook: 27 chapters, all node/protocol glossary entries, full-text Cyrillic search, no-results recovery, F1 from expanded topology and native help navigation')
+        self.completed.append(f'offline handbook: {len(help_page.chapters)} chapters, all node/protocol glossary entries, full-text Cyrillic search, no-results recovery, F1 from expanded topology and native help navigation')
     def verify_expanded_topology(self):
         from lab.schema import NODE_KINDS
         w=self.window;original=json.dumps(w.project,sort_keys=True);selection=w.selected;theme=w.theme;settings=w.settings;size=w.size()

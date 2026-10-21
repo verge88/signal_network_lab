@@ -105,10 +105,11 @@ class Chart(QWidget):
         rect=QRectF(48,16,max(1,self.width()-66),max(1,self.height()-49))
         values=[v for s in self.series for _,v in s.get('points',[])]
         if not values:
-            p.setPen(QColor('#74879e'));p.drawText(self.rect(),Qt.AlignmentFlag.AlignCenter,'Запустите эксперимент, чтобы увидеть измерения');return
+            p.setPen(QColor('#74879e'));p.drawText(self.rect(),Qt.AlignmentFlag.AlignCenter,getattr(self,'empty_text','Запустите эксперимент, чтобы увидеть измерения'));return
         xmin=min(x for s in self.series for x,_ in s['points']);xmax=max(x for s in self.series for x,_ in s['points'])
-        if xmax==xmin:xmax=xmin+1
+        if xmax==xmin:xmin-=.5;xmax+=.5
         ymin=min(0,min(values));ymax=max(values)*1.12
+        if getattr(self,'y_range',None):ymin,ymax=self.y_range
         if ymax<=ymin:ymax=ymin+1
         px=lambda x:rect.left()+(x-xmin)/(xmax-xmin)*rect.width()
         py=lambda y:rect.bottom()-(y-ymin)/(ymax-ymin)*rect.height()
@@ -126,21 +127,23 @@ class Chart(QWidget):
             path.moveTo(px(points[0][0]),py(points[0][1]))
             for x,y in points[1:]:path.lineTo(px(x),py(y))
             color=QColor(s.get('color','#8fe0c2'))
-            if idx==0:
+            if idx==0 and s.get('fill',True):
                 area=QPainterPath(path);area.lineTo(px(points[-1][0]),rect.bottom());area.lineTo(px(points[0][0]),rect.bottom());area.closeSubpath()
                 g=QLinearGradient(0,rect.top(),0,rect.bottom());c=QColor(color);c.setAlpha(40);g.setColorAt(0,c);c.setAlpha(0);g.setColorAt(1,c);p.fillPath(area,g)
-            p.setPen(QPen(color,2));p.drawPath(path)
+            p.setPen(QPen(color,2,Qt.PenStyle.DashLine if s.get('dash') else Qt.PenStyle.SolidLine));p.drawPath(path)
             p.setBrush(color)
-            for x,y in points:p.drawEllipse(QPointF(px(x),py(y)),2.5,2.5)
+            if s.get('markers',True):
+                for x,y in points:p.drawEllipse(QPointF(px(x),py(y)),2.5,2.5)
         p.setPen(QColor('#71849e'))
         for i in range(6):
-            x=xmin+(xmax-xmin)*i/5;p.drawText(QRectF(px(x)-25,rect.bottom()+9,50,18),Qt.AlignmentFlag.AlignCenter,f'{x:.1f}' if xmax<=2 else f'{x:.0f}')
+            x=xmin+(xmax-xmin)*i/5;decimals=min(6,max(0,math.ceil(-math.log10((xmax-xmin)/5))))
+            p.drawText(QRectF(px(x)-34,rect.bottom()+9,68,18),Qt.AlignmentFlag.AlignCenter,f'{x:.{decimals}f}')
         lx=50
         for s in self.series:
             p.setPen(QColor(s.get('color','#8fe0c2')));p.drawText(lx,11,s.get('name',''));lx+=max(100,len(s.get('name',''))*7+25)
         if self.hover is not None:
             x=xmin+(max(rect.left(),min(rect.right(),self.hover))-rect.left())/rect.width()*(xmax-xmin)
-            point=min(self.series[0]['points'],key=lambda v:abs(v[0]-x))
+            point=min(next(s['points'] for s in self.series if s['points']),key=lambda v:abs(v[0]-x))
             p.setPen(QPen(QColor('#667c94'),1,Qt.PenStyle.DashLine));p.drawLine(QPointF(px(point[0]),rect.top()),QPointF(px(point[0]),rect.bottom()))
             text=f'{point[0]:g}  /  {point[1]:.3f}'
             p.setPen(QColor('#d8e9f4'));p.drawText(QRectF(rect.right()-155,18,150,24),Qt.AlignmentFlag.AlignRight,text)

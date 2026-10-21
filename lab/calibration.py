@@ -15,13 +15,14 @@ METRICS = ('delivery_ratio','latency_mean','latency_p95','latency_p99','throughp
 TEMPLATE = 'run_id,offered_rate,delivery_ratio,latency_mean,latency_p95,latency_p99,throughput,retry_ratio,recovery_ms,latency_samples_ms,scenario,incidents_json,source_kind,measurement_id,device,firmware,measured_at,raw_sha256\n'
 
 
-def observations(text):
+def observations(text,min_groups=4,max_rows=24):
     if len(text.encode('utf-8'))>5_000_000: raise ValueError('Лимит измерений: 5 МБ')
+    csv.field_size_limit(max(csv.field_size_limit(),5_000_000))
     reader=csv.DictReader(io.StringIO(text.lstrip('\ufeff')))
     if not {'run_id','offered_rate'}.issubset(reader.fieldnames or []): raise ValueError('CSV должен содержать run_id и offered_rate')
     rows=[]
     for i,r in enumerate(reader):
-        if i>=24: raise ValueError('Лимит калибровки: 24 опыта')
+        if i>=max_rows: raise ValueError(f'Лимит измерений: {max_rows} опытов')
         try:
             row=dict(run_id=r['run_id'].strip(),offered_rate=float(r['offered_rate']))
             if not row['run_id'] or len(row['run_id'])>100 or not 0<row['offered_rate']<=3000: raise ValueError()
@@ -54,7 +55,7 @@ def observations(text):
             row['evidence']=dict(source_kind=source,**evidence)
             rows.append(row)
         except (ValueError,KeyError,AttributeError): raise ValueError(f'Некорректный опыт в строке {i+2}')
-    if len({r['independence_group'] for r in rows})<4: raise ValueError('Нужно минимум четыре независимых run_id / measurement_id')
+    if len({r['independence_group'] for r in rows})<min_groups: raise ValueError('Нужно минимум четыре независимых run_id / measurement_id' if min_groups==4 else f'Нужно минимум {min_groups} независимых run_id / measurement_id')
     for rid in {r['run_id'] for r in rows}:
         if len({r['independence_group'] for r in rows if r['run_id']==rid})!=1:raise ValueError('Один run_id не может относиться к разным источникам измерений')
     return rows

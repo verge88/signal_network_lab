@@ -2,6 +2,7 @@
 from PySide6.QtCore import Qt,QSettings,QRectF
 from PySide6.QtGui import QColor,QFont,QPainter,QPainterPath,QPen,QPixmap,QCursor
 from PySide6.QtWidgets import QApplication,QSplashScreen
+from .theme_palettes import EDITOR_PALETTES
 
 
 SPLASH_COLORS={
@@ -9,6 +10,7 @@ SPLASH_COLORS={
     'light_monochrome':('#ffffff','#161616','#606060','#d6d6d6','#000000'),
     'dark':('#11151c','#e5ebf5','#8c9bb0','#344153','#8fe0c2'),
 }
+SPLASH_COLORS.update((key,tuple(palette[role] for role in ('bg','text','muted','border','accent'))) for key,palette in EDITOR_PALETTES.items())
 
 
 class StartupSplash(QSplashScreen):

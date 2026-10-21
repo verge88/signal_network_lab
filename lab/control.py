@@ -35,7 +35,8 @@ class ControlPlane:
                 if e.links[lid].shutdown_at_s is not None:e.push(e.links[lid].shutdown_at_s*1000,'ctrl_close',lid,0)
         if e.p.routing_knowledge!='distributed':return
         if e.p.route_refresh_ms<=e.p.duration*1000:e.push(e.p.route_refresh_ms,'ctrl_sync',0)
-        for index,incident in enumerate(e.p.incidents):
+        updates=[]
+        for incident in e.p.incidents:
             if incident.kind not in ('node_down','node_restart','link_down'):continue
             resource='link' if incident.kind=='link_down' else 'node';target=incident.target
             adjacent={target} if resource=='node' else {e.links[target].source,e.links[target].target}
@@ -45,9 +46,29 @@ class ControlPlane:
                 delay=incident.detection_ms if incident.detection_ms is not None else configured if configured is not None else (e.links[target].detection_ms if resource=='link' else e.nodes[target].detection_ms)
                 switch=e.links[target].switch_ms if resource=='link' else e.nodes[target].switch_ms
                 recovery=incident.recovery_ms if incident.recovery_ms is not None else (e.links[target].recovery_ms if resource=='link' else e.nodes[target].recovery_ms)
-                if incident.duration*1000>delay:
-                    e.push(incident.start*1000+delay+switch,'ctrl_view',(observer,resource,target,incident.direction,False,int(incident.start*1000)*1000+index*2))
-                e.push((incident.start+incident.duration)*1000+recovery,'ctrl_view',(observer,resource,target,incident.direction,True,int((incident.start+incident.duration)*1000)*1000+index*2+1))
+                down=incident.start*1000+delay+switch;up=(incident.start+incident.duration)*1000+recovery
+                if incident.duration*1000>delay and down<up:
+                    updates.append((down,(observer,resource,target,incident.direction,False)))
+                updates.append((up,(observer,resource,target,incident.direction,True)))
+        # Versions follow observation time, including recovery delays. An older
+        # physical incident can otherwise recover last with an obsolete version.
+        for version,(time,payload) in enumerate(sorted(updates,key=lambda item:(item[0],item[1])),1):
+            e.push(time,'ctrl_view',(*payload,version))
+
+    def can_restore(self,observer,resource,target,direction):
+        """A local recovery cannot release another active fault on the same key."""
+        e=self.e;item=(e.links if resource=='link' else e.nodes)[target]
+        if not item.enabled:return False
+        for incident in e.p.incidents:
+            if incident.target!=target or incident.kind not in (('link_down',) if resource=='link' else ('node_down','node_restart')):continue
+            if resource=='link' and incident.direction not in ('both',direction):continue
+            start=incident.start*1000;end=(incident.start+incident.duration)*1000
+            if start<=e.t<end:return False
+            configured=e.nodes[observer].observer_detection_ms
+            delay=incident.detection_ms if incident.detection_ms is not None else configured if configured is not None else item.detection_ms
+            recovery=incident.recovery_ms if incident.recovery_ms is not None else item.recovery_ms
+            if end-start>delay and start+delay+item.switch_ms<=e.t<end+recovery:return False
+        return True
 
     def known(self,observer,kind,target,direction='both'):
         return self.views.get(observer,{}).get((kind,target,direction),dict(up=True))['up']
@@ -167,7 +188,9 @@ class ControlPlane:
         elif kind=='ctrl_view':
             observer,resource,target,direction,up,version=data
             directions=('forward','reverse') if resource=='link' and direction=='both' else (direction,)
-            for direction in directions:self.record_view(observer,(resource,target,direction),up,version,observer)
+            for direction in directions:
+                if up and not self.can_restore(observer,resource,target,direction):continue
+                self.record_view(observer,(resource,target,direction),up,version,observer)
 
     def report(self):
         return dict(enabled=self.e.p.control_plane,mode=self.e.p.routing_knowledge,sent=self.sent,received=self.received,counts=dict(self.counts),messages=self.traces,associations={lid:state['state'] for lid,state in self.states.items()},view_events=self.view_events,views=[dict(observer=observer,resource=key[0],target=key[1],direction=key[2],**value) for observer,entries in self.views.items() for key,value in entries.items()])

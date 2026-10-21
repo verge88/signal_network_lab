@@ -12,7 +12,7 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import CancelledError
 import numpy as np
 
-ENGINE_VERSION = '2.5.0'
+ENGINE_VERSION = '2.5.1'
 CONTRACT = 'procedures-v2'
 ANSWERS = {'MAP UpdateLocation': 'MAP UpdateLocationResult',
            'MAP SendAuthenticationInfo': 'MAP AuthenticationInfoResult',
@@ -266,7 +266,14 @@ class ProcedureSimulation:
             self.lifecycle.append(dict(time=e.start, object=e.target, state='FAULT', direction=e.direction))
             if e.duration*1000 > detection:
                 self.lifecycle.extend([dict(time=e.start+detection/1000, object=e.target, state='DETECTED'), dict(time=e.start+(detection+resource.switch_ms)/1000, object=e.target, state='ROUTE_DOWN')])
-            self.lifecycle.extend([dict(time=e.start+e.duration, object=e.target, state='PHYSICAL_UP'), dict(time=e.start+e.duration+recovery/1000, object=e.target, state='OPEN' if l and l.protocol=='Diameter' else 'AVAILABLE')])
+            directions=('forward','reverse') if l and e.direction=='both' else (e.direction,)
+            def clear(time,known=False):
+                kinds=('link_down',) if l else ('node_down','node_restart')
+                return all(not any(self.incident_matches(other,kinds,e.target,time,direction,known,l) for other in self.p.incidents) for direction in directions)
+            physical_end=(e.start+e.duration)*1000;recovery_end=physical_end+recovery
+            physical_state='PHYSICAL_UP' if clear(physical_end) else 'FAULT_END_STILL_DOWN'
+            recovered=clear(recovery_end) and clear(recovery_end,True)
+            self.lifecycle.extend([dict(time=physical_end/1000, object=e.target, state=physical_state), dict(time=recovery_end/1000, object=e.target, state=('OPEN' if l and l.protocol=='Diameter' else 'AVAILABLE') if recovered else 'RECOVERY_END_STILL_DOWN')])
             if l is None and resource.recovery_ramp_ms:
                 self.lifecycle.append(dict(time=e.start+e.duration+(recovery+resource.recovery_ramp_ms)/1000, object=e.target, state='FULL_CAPACITY'))
             if e.kind in ('node_down', 'node_restart'):

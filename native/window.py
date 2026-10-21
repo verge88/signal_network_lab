@@ -110,7 +110,7 @@ class MainWindow(QMainWindow):
         for text,fn,ico in [('Открыть проект',self.open_project,'folder'),('Сохранить проект',self.save_project,'save')]:
             b=self.action_button(text,fn,ico);b.setObjectName('Nav');sidebar_button(b,text)
         sl.addStretch();about=self.action_button('О модели лаборатории',self.about,'settings');about.setObjectName('Nav');sidebar_button(about,'О модели лаборатории')
-        offline=label('●  OFFLINE ENGINE   /   v2.8','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
+        offline=label('●  OFFLINE ENGINE   /   v2.10','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
         root.addWidget(side)
         right=QWidget();self.workspace_right=right;rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0);root.addWidget(right,1)
         body=QWidget();bl=QVBoxLayout(body);bl.setContentsMargins(13,8,13,10);bl.setSpacing(12);rl.addWidget(body,1)
@@ -155,15 +155,27 @@ class MainWindow(QMainWindow):
             action=QAction(title,self);action.setCheckable(True);action.setChecked(self.theme==theme_name)
             action.triggered.connect(lambda checked=False,name=theme_name:self.apply_theme(name))
             theme_group.addAction(action);theme_menu.addAction(action);self.theme_actions[theme_name]=action
+        self.palette_action=self.menu_action(view,'Палитра оформления…',self.show_palette)
         templates=view.addMenu('Шаблоны топологии')
         for name,key in [('Гибридное ядро','hybrid'),('SS7 / SIGTRAN','ss7'),('Diameter EPC','diameter'),('5G SA / Service-Based Core','5g')]:self.menu_action(templates,name,lambda p=key:self.new_project(p))
         self.menu_action(research_menu,'Запустить эксперимент',self.start_run,'F5');self.menu_action(research_menu,'Отменить / выйти из режима карты',self.escape_action,'Escape');self.menu_action(research_menu,'Сформировать ML-датасет',self.generate_dataset)
         self.menu_action(research_menu,'Конструктор атак',lambda:self.show_page(6),'Ctrl+Shift+A')
+        self.menu_action(research_menu,'Проверка достоверности…',self.show_validation)
         self.help_action=self.menu_action(help_menu,'Руководство пользователя',self.show_help,'F1')
         self.menu_action(templates,'5G · мобильность и QoS',lambda:self.new_project('5g-mobile'))
         self.menu_action(help_menu,'Основы сигнальных сетей',lambda:self.show_help('Основы сигнальных сетей'))
         self.menu_action(help_menu,'Словарь сокращений',lambda:self.show_help('Словарь сокращений'))
         help_menu.addSeparator();self.menu_action(help_menu,'О модели и ограничениях',self.about);self.menu_action(help_menu,'Горячие клавиши',self.shortcuts)
+    def show_palette(self):
+        from .palette_dialog import PaletteDialog
+        dialog=PaletteDialog(self,self.theme,self.apply_theme)
+        try:dialog.exec()
+        finally:dialog.deleteLater()
+    def show_validation(self):
+        if not getattr(self,'validation_dialog',None):
+            from .validation_dialog import ValidationDialog
+            self.validation_dialog=ValidationDialog(self)
+        self.validation_dialog.reload_history();self.validation_dialog.show();self.validation_dialog.raise_();self.validation_dialog.activateWindow()
     def apply_theme(self,name,persist=True):
         set_theme(name);self.theme=name;app=QApplication.instance();app.setPalette(application_palette());app.setStyleSheet(stylesheet())
         self.setWindowIcon(icon('pulse','#8fe0c2',32))
@@ -336,6 +348,8 @@ class MainWindow(QMainWindow):
         self.calibration_combo=combo([]);self.calibration_combo.currentIndexChanged.connect(self.choose_calibration);ca.addWidget(self.calibration_combo)
         self.calibration_table=table(['Выборка','Метрика','Исходная ошибка','После подбора','95% CI ошибки']);self.calibration_table.setMinimumHeight(150);ca.addWidget(self.calibration_table)
         ca.addLayout(row(self.action_button('Применить конфигурацию',self.apply_calibration,'settings'),self.action_button('Экспорт отчёта',self.export_calibration,'download'),stretch=True));l.insertWidget(l.count()-1,calibration)
+        validation,vl,vh=panel('Проверка достоверности модели','Измеренная сеть ↔ симулятор: распределения и временные ряды, допуски и границы подтверждённых условий. Настройки модели во время проверки не подбираются.')
+        vh.addWidget(self.action_button('Открыть сравнение',self.show_validation,'chart'));l.insertWidget(l.count()-1,validation)
         return outer
     def telemetry_page(self):
         page=QWidget();l=QVBoxLayout(page);l.setContentsMargins(0,0,0,0)
@@ -819,7 +833,7 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.8.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.10.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return
