@@ -266,6 +266,9 @@ class Project(BaseModel):
     engine: Literal['procedures', 'messages'] = 'procedures'
     routing_mode: Literal['shortest', 'loadshare'] = 'shortest'
     trace_limit: int = Field(default=1500, ge=100, le=20000)
+    journal_sessions: int = Field(default=20,ge=0,le=100)
+    journal_events: int = Field(default=2000,ge=100,le=10000)
+    journal_procedure_id: int | None = Field(default=None,ge=1,le=2000000)
     label_policy: Literal['affected', 'scheduled', 'degradation'] = 'affected'
     degradation_latency_ms: float = Field(default=200, ge=1, le=60000)
     control_plane: bool = True

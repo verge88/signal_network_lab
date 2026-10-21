@@ -77,6 +77,7 @@ class ControlPlane:
         e=self.e;old=self.views[observer].get(key)
         if old and old['version']>=version:return
         self.views[observer][key]=dict(up=up,version=version,time=e.t/1000,origin=origin)
+        e.telemetry.view(observer,key,up)
         self.view_seen+=1;e.reservoir(self.view_events,dict(time=e.t/1000,observer=observer,resource=key[0],target=key[1],direction=key[2],up=up,version=version,origin=origin),self.view_seen)
         if not e.node_up(observer,e.t):return
         for nxt,lid in sorted(e.adj[observer]):
@@ -93,11 +94,14 @@ class ControlPlane:
             flow=e.p.flows[0].model_copy(update=dict(id=f'control:{lid}:{src}',source=src,target=dst,priority=0,message_size_cv=0))
             e.procedures[pid]=dict(id=pid,flow=flow,subscriber=0,objects=set(),affected=set(),transport_retries=0,retries=0,control=True,last_cause=None)
         self.sent+=1;self.counts[operation]+=1;e.message_seq+=1
+        e.telemetry.count('control_messages')
         msg=dict(id=e.message_seq,procedure=pid,step=0,source=src,target=dst,role='control',operation=operation,size=link.control_bytes,result='success',path=[(dst,lid)],hop=0,start=e.t,valid=True,protocol=link.protocol,rpc_id=None,category='control',control=dict(lid=lid,**payload))
         e.messages[msg['id']]=msg;e.arrive_node(msg,src)
 
     def change(self,lid,state):
-        entry=self.states[lid];entry['state']=state
+        entry=self.states[lid]
+        if state=='CONNECTING' and entry['epoch']>1:self.e.telemetry.count('control_reconnects')
+        entry['state']=state
         self.e.lifecycle.append(dict(time=self.e.t/1000,object=lid,state='CONTROL_'+state))
         if self.e.p.routing_knowledge=='distributed' and state in ('OPEN','DOWN','CLOSING','CLOSED','REJECTED'):
             self.revision+=1;link=self.e.links[lid]

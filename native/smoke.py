@@ -130,6 +130,8 @@ class SmokeTest(QObject):
             self.completed.append('Python cyclic collection is scheduled on the GUI thread; automatic collection in simulation workers is disabled')
             self.verify_protocol_regressions()
             self.verify_validation()
+            self.verify_procedure_viewer()
+            self.verify_expanded_ml()
             self.verify_handbook()
             self.verify_attacks()
             self.verify_resource_services()
@@ -149,6 +151,33 @@ class SmokeTest(QObject):
             w.job_completed.connect(self.next_stage)
             w.start_run()
         except Exception as e:self.fail(e)
+    def verify_expanded_ml(self):
+        from lab.presets import preset
+        from lab.features import SETS
+        w=self.window;previous=(w.dataset_record,w.model_record,w.current_threshold,w.feature_set_combo.currentData(),w.evaluation_mode.currentData(),w.theme)
+        try:
+            p=preset('diameter');p.duration=12;p.window=1;p.incidents=[];p.journal_sessions=0
+            for f in p.flows:f.rate=2
+            data=research.dataset(p,12,feature_set='combined-v1',topology_variants=True)
+            assert data['metadata']['topologies']==3 and len(SETS)==5
+            imported=research.import_csv(research.csv_text(data['rows']),'Rich telemetry self-test')
+            w.dataset_record=imported
+            for mode in ('topology','fault'):
+                model=research.train(imported['id'],trees=20,evaluation_mode=mode)
+                assert model['feature_set']=='combined-v1' and len(model['features'])==30
+                assert model['operational']['available'] and model['evaluation']['holdout']
+                w.model_record=model;w.refresh_ml();w.evaluation_mode.setCurrentIndex(w.evaluation_mode.findData(mode));self.app.processEvents()
+                assert w.holdout_value.count()>0 and 'эпизодов' in w.operational_info.text()
+            for theme in ('dark','graphite','porcelain','monochrome','light_monochrome'):
+                w.apply_theme(theme,persist=False);w.show_page(3);self.app.processEvents();self.capture(theme+'-expanded-ml')
+                scroll=w.pages.widget(3);scroll.ensureWidgetVisible(w.operational_info);self.app.processEvents();self.capture(theme+'-ml-diagnostics');scroll.verticalScrollBar().setValue(0)
+            w.threshold.setValue(900);assert w.current_threshold==.9
+            assert len(ml.predict(model['id'],data['rows'],model['threshold']))==len(data['rows'])
+            self.completed.append('versioned ML: 30 event-clock inputs, three real topologies, held-out topology/fault groups, detection delay, false alarms/hour, rich CSV, inference and all five native themes')
+        finally:
+            w.dataset_record,w.model_record,w.current_threshold,key,mode,theme=previous
+            w.feature_dataset_id=None;w.refresh_ml();w.feature_set_combo.setCurrentIndex(w.feature_set_combo.findData(key));w.evaluation_mode.setCurrentIndex(w.evaluation_mode.findData(mode))
+            w.apply_theme(theme,persist=False);w.show_page(0)
     def verify_attacks(self):
         from lab.schema import Project
         from lab.attacks import PRESETS,from_preset,decode_template
@@ -213,6 +242,38 @@ class SmokeTest(QObject):
             while w.undo.index()>history:w.undo.undo()
             assert json.dumps(w.project,sort_keys=True)==before
             w.run_record=None;w.apply_theme(theme,persist=False);w.show_page(0)
+    def verify_procedure_viewer(self):
+        from lab.schema import Project
+        from lab.simulator import simulate
+        from .export_dialog import ExportDialog
+        w=self.window;previous=w.run_record;theme=w.theme
+        p=Project(name='Procedure viewer fixture',duration=10,window=1,control_plane=False,routing_knowledge='shared',journal_procedure_id=1,
+            nodes=[dict(id='a',name='Access',kind='MME',x=0,y=0,capacity=100000),dict(id='b',name='HSS',kind='HSS',x=300,y=0,storage_model='queued',database_ms=8,cache_entries=0)],
+            links=[dict(id='ab',source='a',target='b',protocol='Diameter',latency_ms=10,jitter_ms=0,loss=0,reverse_latency_ms=100,rto_ms=10,rto_min_ms=10,rto_max_ms=10,transport_retries=2)],
+            flows=[dict(id='f',source='a',target='b',protocol='Diameter',operation='Diameter ULR',rate=5)])
+        result=dict(id='viewer-fixture',project=p.model_dump(),**simulate(p));w.run_record=result
+        try:
+            w.show_procedure(1);dialog=w.procedure_dialog;session=dialog.session
+            assert session['procedure_id']==1 and session['events'][0]['kind']=='procedure_start'
+            assert any(event['kind']=='transport_retry' for event in session['events'])
+            dialog.goto(0);assert dialog.timers.rowCount()==0 and dialog.contexts.rowCount()==0
+            dialog.next_timeout();assert session['events'][dialog.cursor]['kind']=='timer_expired'
+            cause=session['events'][dialog.cursor]['cause_event'];dialog.goto_cause();assert dialog.cursor==cause-1
+            dialog.goto(8);dialog.toggle_play();dialog.play_step();assert dialog.cursor==9;dialog.timer.stop()
+            for name in ('monochrome','light_monochrome','dark','graphite','porcelain'):
+                w.apply_theme(name,persist=False);dialog.goto(min(len(session['events'])-1,80));dialog.show();self.app.processEvents()
+                if self.output:dialog.grab().save(str(self.output/f'{name}-procedure-viewer.png'))
+            dialog.goto(len(session['events'])-1);dialog.tabs.setCurrentIndex(2);self.app.processEvents()
+            if self.output:
+                dialog.grab().save(str(self.output/'procedure-timers.png'))
+                (self.output/'procedure-journal.json').write_text(json.dumps(result['procedure_journal'],ensure_ascii=False,indent=2),encoding='utf-8')
+                for fmt in ('svg','png','pdf'):dialog.diagram.export_fragment(self.output/('procedure-fragment.'+fmt),fmt)
+            legacy=dict(result);legacy.pop('procedure_journal');dialog.set_run(legacy,1);assert 'Подробного журнала нет' in dialog.info.text()
+            dialog.set_run(result,1);dialog.goto(0);dialog.toggle_play();dialog.hide();assert not dialog.timer.isActive()
+            self.completed.append('procedure stepper: causal journals, real CPU/DB/channel timing, timers/retries/context snapshots, legacy-record handling, playback cleanup, five themes and SVG/PNG/PDF fragments')
+        finally:
+            if getattr(w,'procedure_dialog',None):w.procedure_dialog.hide()
+            w.run_record=previous;w.apply_theme(theme,persist=False)
     def verify_validation(self):
         from lab.schema import Project,Incident
         from lab.validation import synthetic_example,validate,report_html

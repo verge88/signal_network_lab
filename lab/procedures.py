@@ -12,7 +12,7 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import CancelledError
 import numpy as np
 
-ENGINE_VERSION = '2.5.1'
+ENGINE_VERSION = '2.7.0'
 CONTRACT = 'procedures-v2'
 ANSWERS = {'MAP UpdateLocation': 'MAP UpdateLocationResult',
            'MAP SendAuthenticationInfo': 'MAP AuthenticationInfoResult',
@@ -77,6 +77,10 @@ class ProcedureSimulation:
         self.incident_stats = [dict(index=i, kind=e.kind, target=e.target, direction=e.direction, start=e.start, end=e.start+e.duration, affected_procedures=0, first_success_after_end=None) for i, e in enumerate(project.incidents)]
         from .control import ControlPlane
         self.control=ControlPlane(self)
+        from .procedure_journal import ProcedureJournal
+        self.journal=ProcedureJournal(self)
+        from .telemetry import Telemetry
+        self.telemetry=Telemetry(self)
 
     def check(self, value=None):
         if self.cancel and self.cancel():
@@ -202,6 +206,9 @@ class ProcedureSimulation:
         if dst is not None:
             msg['gtt_pending']=False;msg['target']=dst;pr['destination']=dst;self.touch(pr,dst)
             path=self.route(n,dst,f,pr['subscriber'])
+            self.journal.message(msg,'gtt_translation',node=n,translated_target=dst,global_title=f.global_title,
+                matching_prefix=max((prefix for prefix in self.nodes[n].gtt if f.global_title.startswith(prefix)),key=len,default=None))
+            self.journal.route(pr,n,dst,f,path,cause=msg.get('_journal_event'))
             unaffected=self.route(n,dst,f,pr['subscriber'],True)
             if unaffected is not None and unaffected!=path:
                 prev=n
@@ -213,6 +220,7 @@ class ProcedureSimulation:
             hop=self.gt_next_hop(msg,n);preferred=self.gt_next_hop(msg,n,True)
             if preferred is not None and preferred!=hop:
                 node,lid=preferred;self.touch(pr,node);self.touch(pr,lid,'forward' if n==self.links[lid].source else 'reverse')
+            self.journal.message(msg,'gtt_forward',node=n,next_hop=list(hop) if hop else None,global_title=f.global_title)
             if hop is None:self.fail_message(msg,'gtt_not_found');return
             msg['path'].append(hop);msg['route_record'].append(hop[0])
 
@@ -299,12 +307,14 @@ class ProcedureSimulation:
             self.push(min(self.p.duration, (wi+1)*self.p.window)*1000, 'snapshot', wi, 2)
 
     def new(self, ident, f):
+        self.telemetry.count('signal_arrivals')
         subscriber = int(self.rng.integers(f.subscribers))
         steps = [f.operation]
         if f.procedure == 'registration':
             steps = ['Diameter AIR', 'Diameter ULR'] if f.protocol=='Diameter' else ['MAP SendAuthenticationInfo', 'MAP UpdateLocation']
         pr = dict(id=ident, flow=f, start=self.t, subscriber=subscriber, session=f'{f.id}:{subscriber}:{ident}', steps=steps, step=0, attempt=0, attempts=0, active=True, affected=set(), objects=set(), routes=[], retries=0, transport_retries=0, last_cause=None, destination=self.destination(f))
         self.procedures[ident] = pr
+        self.journal.begin(pr)
         self.outstanding += 1; self.max_outstanding = max(self.max_outstanding, self.outstanding)
         self.buckets[self.window(self.t)]['sent'] += 1
         self.touch(pr, f.id,resource='flow')
@@ -315,7 +325,11 @@ class ProcedureSimulation:
         f = pr['flow']; pr['attempts'] += 1
         if pr['attempt']:
             pr['retries'] += 1
+            self.telemetry.count('signal_retries')
             if self.t<self.p.duration*1000:self.buckets[self.window(self.t)]['retries'] += 1
+        timer=f'procedure:{pr["id"]}:{pr["step"]}:{pr["attempt"]}'
+        pr['_journal_event']=self.journal.emit(pr['id'],'timer_set',cause=pr.get('_journal_event'),timer_id=timer,timer_type='procedure',deadline_ms=self.t+f.timeout_ms,attempt=pr['attempt'],step=pr['step'])
+        pr['_journal_timer']=pr['_journal_event']
         self.push(self.t+f.timeout_ms, 'timeout', (pr['id'], pr['step'], pr['attempt']), 0)
         self.send_message(pr, f.source, pr['destination'], 'request', pr['steps'][pr['step']], f.message_bytes)
 
@@ -324,6 +338,7 @@ class ProcedureSimulation:
         pending_gt=role=='request' and f.protocol in ('SS7','M3UA') and bool(f.global_title)
         if pending_gt:dst=None
         path = [] if pending_gt else self.route(src, dst, f, pr['subscriber'])
+        route_event=self.journal.route(pr,src,dst,f,path,cause=pr.get('_journal_event'),rpc_id=rpc_id,pending_gtt=pending_gt)
         self.touch(pr,src)
         if dst is not None:self.touch(pr,dst)
         # Attribution follows the unaffected path, never every incident in the lab.
@@ -345,6 +360,7 @@ class ProcedureSimulation:
         msg = dict(id=self.message_seq, procedure=pr['id'], step=pr['step'] if step is None else step, source=src, target=dst, role=role, operation=operation, size=size, result=result, path=path, hop=0, start=self.t, valid=True,protocol=f.protocol,rpc_id=rpc_id,gtt_pending=pending_gt,route_record=route_record)
         self.messages[msg['id']] = msg
         msg['category']=category;msg['context']=context
+        self.journal.message(msg,'message_created',cause=route_event,bytes=size,category=category)
         if category=='userplane':msg['priority']=f.data_priority
         self.arrive_node(msg, src)
         return msg
@@ -355,6 +371,8 @@ class ProcedureSimulation:
         return msg['valid']
 
     def fail_message(self, msg, cause):
+        event=self.journal.message(msg,'message_failed',reason=cause)
+        if event:self.procedures[msg['procedure']]['_journal_event']=event
         msg['valid'] = False
         self.procedures[msg['procedure']]['last_cause'] = cause
 
@@ -372,6 +390,7 @@ class ProcedureSimulation:
             stat['dropped'] += 1; self.fail_message(msg, 'queue_overflow'); return
         self.serial += 1
         heapq.heappush(queue, (msg.get('priority',pr['flow'].priority), self.serial, msg, self.t))
+        self.journal.message(msg,'cpu_queued',node=n,queue_depth=len(queue)-int(immediate),running=len(self.running[n]),priority=msg.get('priority',pr['flow'].priority))
         stat['max_queue'] = max(stat['max_queue'], len(queue)-int(immediate))
         if self.t<self.p.duration*1000:self.buckets[self.window(self.t)]['queue'].append(len(queue)-int(immediate))
         self.dispatch(n)
@@ -397,13 +416,17 @@ class ProcedureSimulation:
             elif node.service_distribution == 'lognormal' and mean:
                 sigma = math.sqrt(math.log1p(node.service_cv**2)); service = self.rng.lognormal(math.log(mean)-sigma*sigma/2, sigma)
             else: service = mean
-            if application_work and node.storage_model=='probabilistic' and self.rng.random()>=node.cache_hit_ratio: service += node.database_ms
+            embedded_database=0.
+            if application_work and node.storage_model=='probabilistic' and self.rng.random()>=node.cache_hit_ratio:embedded_database=node.database_ms;service+=embedded_database
             service = max(.0001, float(service))*self.effect_value('node_delay',n,self.t)
             self.touch(self.procedures[msg['procedure']],n)
             done = self.t+service
             self.last_admission[n]=self.t
             self.next_admission[n] = self.t+1000/self.admission_capacity(n)
             self.running[n][msg['id']] = (msg, self.t, done, self.node_epoch[n])
+            started=self.journal.message(msg,'cpu_started',node=n,wait_ms=self.t-arrival,service_ms=service,done_ms=done,
+                queue_depth=len(queue),workers=node.workers,storage_model=node.storage_model,probabilistic_database_in_cpu=bool(embedded_database),embedded_database_ms=embedded_database*self.effect_value('node_delay',n,self.t))
+            if started:msg.setdefault('_journal_cpu',{})[n]=started
             self.push(done, 'node_done', (n, msg['id'], self.node_epoch[n], arrival))
 
     def record_busy(self, n, lo, hi):
@@ -416,6 +439,7 @@ class ProcedureSimulation:
     def node_done(self, n, mid, epoch, arrival):
         if epoch != self.node_epoch[n] or mid not in self.running[n]: return
         msg, lo, _, _ = self.running[n].pop(mid)
+        self.journal.message(msg,'cpu_finished',cause=msg.get('_journal_cpu',{}).get(n),node=n,service_ms=self.t-lo)
         self.record_busy(n, lo, self.t)
         self.dispatch(n)
         if not self.usable(msg): return
@@ -437,6 +461,7 @@ class ProcedureSimulation:
                 self.fail_message(msg,'routing_loop');return
             flow=self.procedures[msg['procedure']]['flow'].model_copy(update={'protocol':msg['protocol']})
             path=self.route(n,msg['target'],flow,self.procedures[msg['procedure']]['subscriber'])
+            self.journal.route(self.procedures[msg['procedure']],n,msg['target'],flow,path,cause=msg.get('_journal_event'),message_id=msg['id'],forwarder=n)
             if path is None:
                 del msg['path'][msg['hop']:];del msg['route_record'][msg['hop']+1:]
                 self.fail_message(msg,'no_route');return
@@ -446,13 +471,20 @@ class ProcedureSimulation:
         self.start_transfer(msg, n, nxt, lid)
 
     def node_fault(self, n, kind):
-        self.storage.node_fault(n,kind=='node_restart')
+        fault_events={}
+        for pid in self.journal.sessions:
+            if n in self.procedures[pid]['objects']:
+                fault_events[pid]=self.journal.emit(pid,'node_fault',node=n,reason=kind)
+        self.storage.node_fault(n,kind=='node_restart',fault_events)
         if kind=='node_restart' and self.p.control_plane:self.control.node_restart(n)
         for msg, lo, _, _ in self.running[n].values():
+            self.journal.message(msg,'cpu_aborted',cause=fault_events.get(msg['procedure']),node=n,service_ms=self.t-lo,reason=kind)
             self.record_busy(n, lo, self.t); self.touch(self.procedures[msg['procedure']], n); self.fail_message(msg, kind)
         self.node_stats[n]['dropped'] += len(self.running[n])+len(self.node_queue[n])
         self.running[n].clear(); self.node_epoch[n] += 1
-        for _, _, msg, _ in self.node_queue[n]: self.touch(self.procedures[msg['procedure']], n); self.fail_message(msg, kind)
+        for _, _, msg, arrival in self.node_queue[n]:
+            self.journal.message(msg,'cpu_queue_aborted',cause=fault_events.get(msg['procedure']),node=n,wait_ms=self.t-arrival,reason=kind)
+            self.touch(self.procedures[msg['procedure']], n);self.fail_message(msg,kind)
         self.node_queue[n].clear(); self.next_admission[n] = self.t
 
     def association(self, lid, src):
@@ -469,13 +501,14 @@ class ProcedureSimulation:
         chunks = math.ceil(msg['size']/payload)
         tr = dict(id=self.transfer_seq, msg=msg, src=src, dst=dst, lid=lid, chunks=chunks, received=set(), delivered=False, failed=False, sender_failed=False, pending_arrivals=0, stream=self.procedures[msg['procedure']]['subscriber'] % l.streams)
         self.transfers[tr['id']] = tr
+        tr['_journal_queued']=self.journal.message(msg,'transport_queued',transfer_id=tr['id'],node=src,receiver=dst,link=lid,chunks=chunks,stream=tr['stream'])
         a = self.association(lid, src)
         a['streams'][tr['stream']].append(tr['id'])
         self.link_stats[lid]['messages'] += 1
         remaining = msg['size']
         for i in range(chunks):
             size = min(remaining,payload)+l.header_bytes; remaining -= size-l.header_bytes
-            packet = dict(key=(tr['id'],i), transfer=tr['id'], index=i, size=size, retry=0, token=0, sent=0.)
+            packet = dict(key=(tr['id'],i), transfer=tr['id'], index=i, size=size, retry=0, token=0, sent=0.,queued_at=self.t)
             a['queue'].append(packet)
         self.pump(lid, src)
 
@@ -487,8 +520,10 @@ class ProcedureSimulation:
             a['flight'][packet['key']] = packet
             self.packet_send(packet, lid, src)
 
-    def wire_send(self, lid, src, size, pr, ack=False,management=False):
+    def wire_send(self, lid, src, size, pr, ack=False,management=False,message=None,packet=None,journal_cause=None):
         l = self.links[lid]; key = (lid, src)
+        advance=not ack and not (packet is not None and self.transfers[packet['transfer']]['delivered'])
+        journal_cause=journal_cause if journal_cause is not None else packet.get('_journal_send') if packet is not None and not ack else message.get('_journal_event') if message is not None else None
         direction = 'forward' if src==l.source else 'reverse'
         self.touch(pr, lid, direction)
         s = self.link_stats[lid]
@@ -498,8 +533,9 @@ class ProcedureSimulation:
         queue = self.wire_queue[key]
         while queue and queue[0][0]<=self.t: queue.popleft()
         if sum(x[1] for x in queue)+size > l.buffer_bytes:
+            if message is not None:self.journal.message(message,'channel_drop',cause=journal_cause,advance=advance,node=src,link=lid,ack=ack,reason='buffer_overflow',bytes=size)
             s['buffer_drops'] += 1; s['dropped'] += 1; ds['dropped'] += 1; return None
-        tx = max(self.t,self.wire[key])+size*8/(l.bandwidth_mbps*1000)
+        tx_start=max(self.t,self.wire[key]);tx = tx_start+size*8/(l.bandwidth_mbps*1000)
         self.wire[key] = tx; queue.append((tx,size))
         s['bytes'] += size; ds['bytes'] += size
         loss = l.reverse_loss if direction=='reverse' and l.reverse_loss is not None else l.loss
@@ -509,10 +545,17 @@ class ProcedureSimulation:
         dropped = self.rng.random()<probability
         self.loss_last[key] = dropped
         if not self.link_up(lid,src,tx,management=management) or not self.node_up(src,tx) or dropped:
+            if message is not None:self.journal.message(message,'channel_drop',cause=journal_cause,advance=advance,node=src,link=lid,ack=ack,reason='sampled_loss' if dropped else 'link_or_source_unavailable',wait_ms=tx_start-self.t,serialization_ms=tx-tx_start,tx_start_ms=tx_start,tx_end_ms=tx,bytes=size)
             s['dropped'] += 1; ds['dropped'] += 1; return None
         delay = l.reverse_latency_ms if direction=='reverse' and l.reverse_latency_ms is not None else l.latency_ms
         factor = max((e.magnitude for e in self.p.incidents if self.incident_matches(e, ('latency',), lid, tx, direction)),default=1)
         arrival=tx+max(0.,float(self.rng.normal(delay*factor,l.jitter_ms)))
+        if message is not None:
+            event=self.journal.message(message,'ack_sent' if ack else 'channel_transmit',cause=journal_cause,advance=advance,node=src,receiver=l.target if src==l.source else l.source,link=lid,
+                transfer_id=packet['transfer'] if packet else None,packet_index=packet['index'] if packet else None,
+                wait_ms=tx_start-self.t,serialization_ms=tx-tx_start,propagation_ms=arrival-tx,tx_start_ms=tx_start,tx_end_ms=tx,arrival_ms=arrival,bytes=size)
+            if ack and packet is not None:packet['_journal_ack']=event
+            elif packet is not None:packet['_journal_wire']=event
         self.direction_delivered[key]+=1;samples=self.direction_latencies[key]
         if len(samples)<2000:samples.append(arrival-self.t)
         else:
@@ -524,6 +567,9 @@ class ProcedureSimulation:
         tr = self.transfers[packet['transfer']]; pr = self.procedures[tr['msg']['procedure']]
         packet['token'] += 1; packet['sent'] = self.t
         l = self.links[lid]; a = self.association(lid,src)
+        sent_event=self.journal.message(tr['msg'],'packet_sent',cause=packet.get('_journal_retry',tr.get('_journal_queued')),advance=not tr['delivered'],node=src,receiver=tr['dst'],link=lid,
+            transfer_id=tr['id'],packet_index=packet['index'],attempt=packet['retry'],flight=len(a['flight']),cwnd=a['cwnd'],admission_wait_ms=self.t-packet['queued_at'] if not packet['retry'] else 0.)
+        packet['_journal_send']=sent_event
         actual=lid
         if packet['retry'] and l.path_group and not self.link_up(lid,src,self.t,True):
             candidates=[x.id for x in self.links.values() if x.path_group==l.path_group and {x.source,x.target}=={tr['src'],tr['dst']} and x.protocol==l.protocol and x.routing_context==l.routing_context and self.link_up(x.id,src,self.t,True)]
@@ -533,24 +579,30 @@ class ProcedureSimulation:
             direction = 'forward' if src==self.links[actual].source else 'reverse'
             s['directions'].setdefault(direction,dict(packets=0,bytes=0,dropped=0,retransmissions=0))['retransmissions'] += 1
             pr['transport_retries'] += 1
+            self.telemetry.count('transport_retries')
             if self.t<self.p.duration*1000:self.buckets[self.window(self.t)]['transport_retries'] += 1
-        arrival = self.wire_send(actual,src,packet['size']-l.header_bytes+self.links[actual].header_bytes,pr,management=tr['msg'].get('category')=='control')
-        if arrival is not None:tr['pending_arrivals']+=1;self.push(arrival,'packet_rx',(packet,lid,src,actual))
+        arrival = self.wire_send(actual,src,packet['size']-l.header_bytes+self.links[actual].header_bytes,pr,management=tr['msg'].get('category')=='control',message=tr['msg'],packet=packet)
+        if arrival is not None:tr['pending_arrivals']+=1;self.push(arrival,'packet_rx',(packet,lid,src,actual,packet.get('_journal_wire'),packet['retry']))
         if l.protocol in ('PFCP','GTPU','IP'):
             # N4 datagrams use RPC response timers, not transport DATA ACKs.
             a['flight'].pop(packet['key'],None)
             if arrival is None:tr['failed']=True;self.fail_message(tr['msg'],'datagram_loss')
             return
         rto = a['rto']
-        self.push(self.t+rto,'packet_timeout',(packet,lid,src,packet['token']),0)
+        timer=f'transport:{tr["id"]}:{packet["index"]}:{packet["token"]}'
+        timer_event=self.journal.emit(pr['id'],'timer_set',cause=sent_event,timer_id=timer,timer_type='transport',deadline_ms=self.t+rto,rto_ms=rto,
+            message_id=tr['msg']['id'],transfer_id=tr['id'],packet_index=packet['index'],attempt=packet['retry'],node=src,link=lid)
+        packet['_journal_timer_event']=timer_event;packet['_journal_timer_id']=timer
+        self.push(self.t+rto,'packet_timeout',(packet,lid,src,packet['token'],timer_event),0)
 
-    def packet_rx(self, packet, lid, src, actual):
+    def packet_rx(self, packet, lid, src, actual,send_event=None,sent_attempt=None):
         tr = self.transfers[packet['transfer']]; msg = tr['msg']; pr = self.procedures[msg['procedure']]
         tr['pending_arrivals']-=1
+        received_event=self.journal.message(msg,'packet_received',cause=send_event,advance=not tr['delivered'] and packet['index'] not in tr['received'],node=tr['dst'],link=actual,transfer_id=tr['id'],packet_index=packet['index'],attempt=sent_attempt,duplicate=packet['index'] in tr['received'])
         if not self.node_up(tr['dst'],self.t):self.retire_receiver(tr);return
         if self.links[lid].protocol not in ('PFCP','GTPU','IP'):
-            ack_at = self.wire_send(actual,tr['dst'],self.links[actual].header_bytes,pr,True,management=msg.get('category')=='control')
-            if ack_at is not None:self.push(ack_at,'ack',(packet,lid,src))
+            ack_at = self.wire_send(actual,tr['dst'],self.links[actual].header_bytes,pr,True,management=msg.get('category')=='control',message=msg,packet=packet,journal_cause=received_event)
+            if ack_at is not None:self.push(ack_at,'ack',(packet,lid,src,packet.get('_journal_ack')))
         if not self.usable(msg) or tr['failed']:self.retire_receiver(tr);return
         if packet['index'] in tr['received']:
             self.link_stats[lid]['duplicates'] += 1;self.retire_receiver(tr);return
@@ -581,9 +633,13 @@ class ProcedureSimulation:
             if not tr['delivered']:
                 tr['delivered'] = True; tr['msg']['hop'] += 1; self.arrive_node(tr['msg'],tr['dst'])
 
-    def ack(self, packet, lid, src):
+    def ack(self, packet, lid, src,ack_event=None):
         a = self.association(lid,src)
-        if a['flight'].pop(packet['key'],None) is None: return
+        accepted=a['flight'].pop(packet['key'],None) is not None
+        tr=self.transfers[packet['transfer']]
+        self.journal.message(tr['msg'],'ack_received',cause=ack_event,advance=False,node=src,link=lid,transfer_id=tr['id'],packet_index=packet['index'],accepted=accepted)
+        if not accepted:return
+        self.journal.emit(tr['msg']['procedure'],'timer_cancelled',cause=packet.get('_journal_timer_event'),timer_id=packet.get('_journal_timer_id'),timer_type='transport',reason='ack_received',message_id=tr['msg']['id'],node=src,link=lid)
         l = self.links[lid]
         if not packet['retry']:
             rtt = self.t-packet['sent']
@@ -595,21 +651,29 @@ class ProcedureSimulation:
         a['cwnd'] = min(128.,a['cwnd']+1/a['cwnd'])
         self.pump(lid,src)
 
-    def packet_timeout(self, packet, lid, src, token):
+    def packet_timeout(self, packet, lid, src, token,timer_event=None):
         a = self.association(lid,src)
         if packet['token'] != token or packet['key'] not in a['flight']: return
         tr = self.transfers[packet['transfer']]
+        expired=self.journal.emit(tr['msg']['procedure'],'timer_expired',cause=timer_event,timer_type='transport',timer_id=f'transport:{tr["id"]}:{packet["index"]}:{token}',
+            message_id=tr['msg']['id'],transfer_id=tr['id'],packet_index=packet['index'],receiver_delivered=tr['delivered'],pending_arrivals=tr['pending_arrivals'],node=src,link=lid)
         if not self.usable(tr['msg']) or tr['failed']:
             a['flight'].pop(packet['key']); self.deliver_stream(a,tr['stream']); self.pump(lid,src); return
         l = self.links[lid]
         if packet['retry'] >= (0 if l.protocol=='SS7' else l.transport_retries):
+            self.journal.message(tr['msg'],'transport_exhausted',cause=expired,advance=False,transfer_id=tr['id'],receiver_delivered=tr['delivered'],pending_arrivals=tr['pending_arrivals'])
             tr['sender_failed']=True
-            for key in [key for key in a['flight'] if key[0]==tr['id']]:a['flight'].pop(key)
+            for key in [key for key in a['flight'] if key[0]==tr['id']]:
+                pending=a['flight'].pop(key)
+                if key!=packet['key']:self.journal.emit(tr['msg']['procedure'],'timer_cancelled',cause=pending.get('_journal_timer_event'),timer_id=pending.get('_journal_timer_id'),timer_type='transport',reason='sender_exhausted')
             self.retire_receiver(tr);self.deliver_stream(a,tr['stream']); self.pump(lid,src); return
         a['cwnd'] = max(1.,a['cwnd']/2);a['rto']=min(l.rto_max_ms,2*a['rto']);packet['retry'] += 1
+        packet['_journal_retry']=self.journal.emit(tr['msg']['procedure'],'transport_retry',cause=expired,message_id=tr['msg']['id'],transfer_id=tr['id'],packet_index=packet['index'],attempt=packet['retry'],rto_ms=a['rto'],cwnd=a['cwnd'])
         self.packet_send(packet,lid,src)
 
     def app_arrival(self, msg):
+        event=self.journal.message(msg,'message_arrived',node=msg['target'],result=msg['result'],elapsed_ms=self.t-msg['start'])
+        if event:self.procedures[msg['procedure']]['_journal_event']=event
         if msg.get('category')=='mobility':self.mobility.arrival(msg);return
         if msg.get('category')=='control':self.control.arrival(msg);return
         if msg.get('category')=='userplane':self.user_plane.arrival(msg);return
@@ -642,6 +706,7 @@ class ProcedureSimulation:
             self.send_message(pr,dst,f.source,'answer',ANSWERS[msg['operation']],f.response_bytes,result,msg['step'])
         elif msg['role']=='answer':
             if not pr['active'] or msg['step']!=pr['step']:return
+            self.journal.emit(pr['id'],'timer_cancelled',cause=pr.get('_journal_timer'),timer_id=f'procedure:{pr["id"]}:{pr["step"]}:{pr["attempt"]}',reason='answer_received',message_id=msg['id'])
             if msg['result']!='success': self.finish(pr,msg['result']); return
             if pr['step']+1<len(pr['steps']):
                 pr['step'] += 1; pr['attempt'] = 0; self.send_attempt(pr)
@@ -650,10 +715,12 @@ class ProcedureSimulation:
     def timeout(self, ident, step, attempt):
         pr = self.procedures[ident]
         if not pr['active'] or pr['step']!=step or pr['attempt']!=attempt: return
+        pr['_journal_event']=self.journal.emit(ident,'timer_expired',cause=pr.get('_journal_timer'),timer_type='procedure',timer_id=f'procedure:{ident}:{step}:{attempt}',reason='no_answer_before_deadline',step=step,attempt=attempt)
         if attempt<pr['flow'].max_retries:
             pr['attempt'] += 1
             backoff = pr['flow'].retry_backoff_ms * 2**attempt
             self.push(self.t+backoff,'retry',(ident,step,pr['attempt']))
+            pr['_journal_event']=self.journal.emit(ident,'procedure_retry',cause=pr.get('_journal_event'),step=step,attempt=pr['attempt'],backoff_ms=backoff,scheduled_ms=self.t+backoff)
         else: self.finish(pr,'timeout')
 
     def reservoir(self, target, record, seen):
@@ -663,8 +730,10 @@ class ProcedureSimulation:
             if index<len(target): target[index] = record
 
     def finish(self, pr, status):
+        self.journal.finish(pr,status)
         pr['active'] = False; self.finished += 1; self.outstanding -= 1
         elapsed = self.t-pr['start']; b = self.buckets[self.window(pr['start'])]
+        self.telemetry.signal_finish(status,elapsed)
         pr['status'] = status; pr['elapsed'] = elapsed
         if status=='delivered':
             b['delivered'] += 1; b['latency'].append(elapsed)
@@ -685,6 +754,8 @@ class ProcedureSimulation:
             self.steps += 1
             if self.steps%2048==0: self.check(min(99,int(100*self.finished/max(1,self.total))))
             self.t, _, _, kind, data = heapq.heappop(self.events)
+            self.telemetry.advance(self.t)
+            self.journal.actor=self.journal.event_actor(kind,data)
             if kind=='new': self.new(*data)
             elif kind=='timeout': self.timeout(*data)
             elif kind=='retry':
@@ -703,6 +774,7 @@ class ProcedureSimulation:
             elif kind.startswith('user_'):self.user_plane.event(kind,data)
             elif kind.startswith('resource_'):self.storage.event(kind,data)
             elif kind.startswith('mobility_'):self.mobility.event(kind,data)
+            self.journal.actor=None
             if self.steps>12000000: raise ValueError('Превышен лимит 12 млн событий; уменьшите нагрузку, размеры или число повторов')
         result=self.report();result['control_plane']=self.control.report()
         result['resources']=self.storage.report()
@@ -712,6 +784,8 @@ class ProcedureSimulation:
         for row in result['windows']:
             lo=row['time'];hi=min(self.p.duration,lo+self.p.window)
             row['scheduled_attacks']=sorted({o['attack_id'] for i,o in self.attack_origins.items() if self.p.incidents[i].start<hi and self.p.incidents[i].start+self.p.incidents[i].duration>lo})
+        result['procedure_journal']=self.journal.report()
+        self.telemetry.report(result)
         return result
 
     def report_attacks(self):

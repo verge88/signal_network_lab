@@ -74,6 +74,7 @@ class FiveGSimulation(ProcedureSimulation):
         if selected is not None:return selected
         selected=self.select_nf(pr,kind,service)
         if selected is not None:pr['nf_selected'][kind]=selected
+        self.journal.emit(pr['id'],'nf_selected',cause=pr.get('_journal_event'),nf_kind=kind,service=service,selected=selected,pinned=pr['flow'].nf_bindings.get(kind),selector=pr['subscriber'],mode=self.p.routing_mode)
         return selected
 
     def discovery(self,pr,source,kind,service):
@@ -134,8 +135,11 @@ class FiveGSimulation(ProcedureSimulation):
         pr=self.procedures[frame['procedure']];f=pr['flow'];frame['token']+=1;pr['attempts']+=1;frame['stat']['requests']+=1
         if frame['attempt']:
             pr['retries']+=1
+            self.telemetry.count('signal_retries')
             if self.t<self.p.duration*1000:self.buckets[self.window(self.t)]['retries']+=1
         timeout=f.timeout_ms if frame['parent'] is None else f.service_timeout_ms
+        frame['_journal_timer']=self.journal.emit(pr['id'],'timer_set',cause=frame.get('_journal_retry',pr.get('_journal_event')),timer_id=f'rpc:{frame["id"]}:{frame["token"]}',timer_type='rpc',deadline_ms=self.t+timeout,rpc_id=frame['id'],parent_rpc=frame['parent'],operation=frame['spec']['operation'],attempt=frame['attempt'],node=frame['src'],source=frame['src'],target=frame['dst'])
+        pr['_journal_event']=frame['_journal_timer']
         self.push(self.t+timeout,'rpc_timeout',(frame['id'],frame['token']),0)
         if frame['src'] is None or frame['dst'] is None:
             pr['last_cause']='nf_not_found';return
@@ -160,6 +164,8 @@ class FiveGSimulation(ProcedureSimulation):
         if msg.get('category') in ('control','userplane','mobility'):return super().app_arrival(msg)
         if msg.get('rpc_id') is None:return super().app_arrival(msg)
         frame=self.rpcs[msg['rpc_id']];pr=self.procedures[frame['procedure']];spec=frame['spec']
+        event=self.journal.message(msg,'message_arrived',node=msg['target'],result=msg['result'],elapsed_ms=self.t-msg['start'],parent_rpc=frame['parent'])
+        if event:pr['_journal_event']=event
         if pr.get('mobility_obsolete'):return
         self.message_finished+=1
         self.reservoir(self.message_traces,dict(time=msg['start']/1000,end=self.t/1000,procedure_id=pr['id'],session_id=pr['session'],
@@ -167,6 +173,7 @@ class FiveGSimulation(ProcedureSimulation):
             source=msg['source'],target=msg['target'],bytes=msg['size'],result=msg['result'],snssai=pr['flow'].snssai,dnn=pr['flow'].dnn),self.message_finished)
         if msg['role']=='answer':
             if frame['closed']:return
+            self.journal.emit(pr['id'],'timer_cancelled',cause=frame.get('_journal_timer'),timer_id=f'rpc:{frame["id"]}:{frame["token"]}',timer_type='rpc',rpc_id=frame['id'],reason='answer_received',message_id=msg['id'])
             frame['closed']=True;result=msg['result']
             frame['stat']['success' if result=='success' else 'errors']+=1
             if frame['parent'] is None:
@@ -239,9 +246,12 @@ class FiveGSimulation(ProcedureSimulation):
         pr=self.procedures[frame['procedure']]
         if frame['parent'] is None and (not pr['active'] or pr['step']!=frame['step']):return
         if kind=='rpc_retry':self.transmit_rpc(frame);return
+        expired=self.journal.emit(pr['id'],'timer_expired',cause=frame.get('_journal_timer'),timer_id=f'rpc:{ident}:{token}',timer_type='rpc',rpc_id=ident,operation=frame['spec']['operation'],reason='no_answer_before_deadline')
+        pr['_journal_event']=expired
         if frame['attempt']<pr['flow'].max_retries:
             frame['attempt']+=1
             self.push(self.t+pr['flow'].retry_backoff_ms*2**(frame['attempt']-1),'rpc_retry',(ident,token))
+            frame['_journal_retry']=self.journal.emit(pr['id'],'procedure_retry',cause=expired,rpc_id=ident,attempt=frame['attempt'],scheduled_ms=self.t+pr['flow'].retry_backoff_ms*2**(frame['attempt']-1))
         else:
             frame['closed']=True;frame['stat']['timeouts']+=1
             if frame['parent'] is None:

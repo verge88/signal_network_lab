@@ -36,8 +36,11 @@ class UserPlane:
     def finish(self,packet,status):
         if packet['closed']:return
         e=self.e;packet['closed']=True;packet['status']=status;elapsed=e.t-packet['start'];packet['rtt_ms']=elapsed
+        ended=e.journal.emit(packet['procedure'],'timer_expired' if status=='user_plane_timeout' else 'timer_cancelled',cause=packet.get('_journal_timer'),timer_id=f'userplane:{packet["id"]}',timer_type='userplane',reason=status,user_packet_id=packet['id'])
+        e.journal.emit(packet['procedure'],'user_data_finished',cause=ended,user_packet_id=packet['id'],status=status,rtt_ms=elapsed)
         if status=='delivered':self.windows[e.window(packet['start'])]['delivered']+=1;self.windows[e.window(packet['start'])]['rtt'].append(elapsed)
         budget=e.procedures[packet['procedure']]['flow'].qos_budget_ms;packet['qos_met']=status=='delivered' and (not budget or elapsed<=budget)
+        e.telemetry.data_finish(packet)
         self.completed+=1;e.reservoir(self.traces,dict(time=packet['start']/1000,end=e.t/1000,packet_id=packet['id'],procedure_id=packet['procedure'],status=status,rtt_ms=elapsed,bytes=packet['bytes'],upf=packet['upf'],dn=packet['dn'],qos_met=packet['qos_met'],rules=packet.get('rules',[])),self.completed)
 
     def send_leg(self,packet,src,dst,protocol,leg):
@@ -73,6 +76,8 @@ class UserPlane:
         pr=e.procedures[data];f=pr['flow'];session=self.sessions[data];self.seq+=1
         packet=dict(id=self.seq,procedure=data,start=e.t,deadline=e.t+f.data_timeout_ms,bytes=f.data_bytes,closed=False,mobility_epoch=e.mobility.epochs.get(f.id,0),**session)
         self.packets[self.seq]=packet;self.windows[e.window(e.t)]['sent']+=1
+        e.telemetry.count('data_sent');e.telemetry.gauge('data_inflight',1)
+        packet['_journal_timer']=e.journal.emit(pr['id'],'timer_set',cause=pr.get('_journal_event'),timer_id=f'userplane:{self.seq}',timer_type='userplane',deadline_ms=packet['deadline'],user_packet_id=self.seq,node=f.source)
         e.push(e.t+f.data_timeout_ms,'user_timeout',self.seq,0)
         if not self.context_valid(packet):self.finish(packet,'user_plane_context_lost');return
         self.send_leg(packet,f.source,session['upf'],'GTPU','N3 uplink')

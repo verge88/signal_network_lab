@@ -13,6 +13,7 @@ from lab import storage, research, ml
 from lab.presets import preset
 from lab.schema import Project, Node, NODE_KINDS, LINK_PROTOCOLS
 from lab.attacks import NODE_EFFECTS
+from lab.features import SETS as FEATURE_SETS, operational_metrics
 from .style import icon, THEMES, set_theme, saved_theme, themed_color, themed_stylesheet, stylesheet, application_palette
 from .widgets import label, button, row, panel, table, populate, spin, combo, Metric, Chart
 from .graph import NetworkView
@@ -24,6 +25,7 @@ NAMES=dict(INCIDENTS)
 OVERVIEW_MIN_HEIGHT=125
 FEATURE_NAMES=dict(rate='Интенсивность',delivery_ratio='Успешные процедуры',latency_mean='Задержка mean',latency_p95='Задержка p95',latency_p99='Задержка p99',loss_ratio='Неуспешные процедуры',timeout_ratio='Тайм-ауты',queue_mean='Очередь mean',queue_max='Очередь max',utilization='Утилизация',route_changes='Смена маршрута',retries='Повторы процедур',transport_retries='Повторы транспорта',completion_rate='Завершения / s',outstanding='Незавершённые процедуры',scheduled_event='Запланированное событие',affected='Воздействие на трафик',observed_degradation='Наблюдаемое ухудшение')
 FEATURE_NAMES.update(user_sent='5G · отправлено пакетов',user_delivered='5G · доставлено пакетов',user_loss_ratio='5G · доля потерь данных',user_rtt_p95='5G · RTT данных p95')
+FEATURE_NAMES.update(signal_arrivals_s='Сигнализация · новые процедуры / s',signal_completed_s='Сигнализация · завершения / s',signal_failure_ratio='Сигнализация · доля ошибок',signal_timeout_ratio='Сигнализация · доля тайм-аутов',signal_latency_p95='Сигнализация · p95, ms',signal_retries_s='Повторы процедур / s',transport_retries_s='Повторы транспорта / s',control_messages_s='Управляющие сообщения / s',control_reconnects_s='Переподключения / s',neighbor_unavailable_ratio='Недоступность соседей',data_sent_s='Данные · отправлено / s',data_completed_s='Данные · завершено / s',data_loss_ratio='Данные · доля ошибок',data_rtt_p95='Данные · RTT p95, ms',data_goodput_mbps='Данные · goodput, Mbit/s',data_qos_violation_ratio='Данные · нарушение QoS',data_inflight_mean='Данные · пакетов в работе',db_requests_s='БД · запросы / s',db_wait_mean_ms='БД · ожидание, ms',db_overflow_s='БД · переполнения / s',db_timeouts_s='БД · тайм-ауты / s',db_queue_mean='БД · средняя очередь',db_active_ratio='БД · занятость соединений',cache_hit_ratio='Кэш · доля попаданий',cache_occupancy_ratio='Кэш · заполнение',cache_expired_s='Кэш · истечения / s',cache_evicted_s='Кэш · вытеснения / s',context_occupancy_ratio='Контексты · заполнение',context_expired_s='Контексты · истечения / s',context_rejected_s='Контексты · отказы / s')
 
 
 def number(v,d=1):return '—' if v is None else f'{v:,.{d}f}'.replace(',',' ').replace('.',',')
@@ -34,6 +36,7 @@ def timestamp(s):
 def fingerprint(p):
     q=Project.model_validate(p).model_dump()
     for n in q['nodes']:n.pop('x',None);n.pop('y',None)
+    for key in ('journal_sessions','journal_events','journal_procedure_id'):q.pop(key,None)
     return json.dumps(q,sort_keys=True)
 
 
@@ -110,7 +113,7 @@ class MainWindow(QMainWindow):
         for text,fn,ico in [('Открыть проект',self.open_project,'folder'),('Сохранить проект',self.save_project,'save')]:
             b=self.action_button(text,fn,ico);b.setObjectName('Nav');sidebar_button(b,text)
         sl.addStretch();about=self.action_button('О модели лаборатории',self.about,'settings');about.setObjectName('Nav');sidebar_button(about,'О модели лаборатории')
-        offline=label('●  OFFLINE ENGINE   /   v2.10','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
+        offline=label('●  OFFLINE ENGINE   /   v2.11','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
         root.addWidget(side)
         right=QWidget();self.workspace_right=right;rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0);root.addWidget(right,1)
         body=QWidget();bl=QVBoxLayout(body);bl.setContentsMargins(13,8,13,10);bl.setSpacing(12);rl.addWidget(body,1)
@@ -161,6 +164,7 @@ class MainWindow(QMainWindow):
         self.menu_action(research_menu,'Запустить эксперимент',self.start_run,'F5');self.menu_action(research_menu,'Отменить / выйти из режима карты',self.escape_action,'Escape');self.menu_action(research_menu,'Сформировать ML-датасет',self.generate_dataset)
         self.menu_action(research_menu,'Конструктор атак',lambda:self.show_page(6),'Ctrl+Shift+A')
         self.menu_action(research_menu,'Проверка достоверности…',self.show_validation)
+        self.menu_action(research_menu,'Пошаговый разбор процедуры…',self.show_procedure)
         self.help_action=self.menu_action(help_menu,'Руководство пользователя',self.show_help,'F1')
         self.menu_action(templates,'5G · мобильность и QoS',lambda:self.new_project('5g-mobile'))
         self.menu_action(help_menu,'Основы сигнальных сетей',lambda:self.show_help('Основы сигнальных сетей'))
@@ -176,6 +180,15 @@ class MainWindow(QMainWindow):
             from .validation_dialog import ValidationDialog
             self.validation_dialog=ValidationDialog(self)
         self.validation_dialog.reload_history();self.validation_dialog.show();self.validation_dialog.raise_();self.validation_dialog.activateWindow()
+    def show_procedure(self,procedure_id=None):
+        if not self.run_record:raise ValueError('Сначала выполните или выберите сохранённый прогон')
+        if procedure_id is None:
+            index=self.trace_table.currentRow();visible=getattr(self,'visible_traces',[])
+            if 0<=index<len(visible):procedure_id=visible[index].get('procedure_id')
+        if not getattr(self,'procedure_dialog',None):
+            from .procedure_dialog import ProcedureDialog
+            self.procedure_dialog=ProcedureDialog(self)
+        self.procedure_dialog.set_run(self.run_record,procedure_id);self.procedure_dialog.show();self.procedure_dialog.raise_();self.procedure_dialog.activateWindow()
     def apply_theme(self,name,persist=True):
         set_theme(name);self.theme=name;app=QApplication.instance();app.setPalette(application_palette());app.setStyleSheet(stylesheet())
         self.setWindowIcon(icon('pulse','#8fe0c2',32))
@@ -192,6 +205,7 @@ class MainWindow(QMainWindow):
             if widget.property('nodeKindIcons'):refresh_kind_icons(widget)
         self.graph.refresh_theme()
         if self.expanded_workspace:self.expanded_workspace.refresh_icons()
+        if getattr(self,'procedure_dialog',None):self.procedure_dialog.refresh_theme()
         self.help_widget.refresh_theme()
         self.attacks_widget.timeline.update()
         for chart in self.findChildren(Chart):chart.update()
@@ -330,6 +344,9 @@ class MainWindow(QMainWindow):
         self.control_plane_check=QCheckBox('Установление ассоциаций и heartbeat');self.knowledge_combo=combo([('distributed','Отдельное представление у каждого узла'),('shared','Общее знание · сравнение со старой моделью')]);self.route_refresh=spin(5000,100,60000,0,'ms')
         cc.addLayout(row(self.control_plane_check,self.knowledge_combo));cc.addLayout(row(label('Обновление представлений','Muted'),self.route_refresh,stretch=True))
         cc.addLayout(parameter_row(('Метка ML',self.label_combo),('Выборка трасс',self.trace_limit)))
+        self.journal_sessions=spin(20,0,100);self.journal_events=spin(2000,100,10000)
+        self.journal_sessions.setToolTip('Подробная выборка процедур для пошагового разбора. 0 — отключить. Отбор не меняет симуляцию.')
+        cc.addLayout(parameter_row(('Подробных сессий',self.journal_sessions),('Событий на сессию',self.journal_events)))
         self.degradation_threshold=spin(200,1,60000,1,'ms');cc.addLayout(row(label('Порог p95 для метки ухудшения','Muted'),self.degradation_threshold,stretch=True))
         flows,fc,fh=panel('Сигнальные потоки','В режиме v2 интенсивность задаёт новые процедуры. Ответы, этапы регистрации и повторы создают дополнительную нагрузку.')
         for text,fn,ico in [('Добавить',lambda:self.edit_flow(False),'plus'),('Изменить',lambda:self.edit_flow(True),'settings'),('Удалить',self.delete_flow,'trash')]:fh.addWidget(self.action_button(text,fn,ico))
@@ -356,6 +373,7 @@ class MainWindow(QMainWindow):
         split=QSplitter(Qt.Orientation.Vertical);l.addWidget(split)
         chart,cc,ch=panel('Измерения по времени');self.telemetry_metric=combo([(x,FEATURE_NAMES[x]) for x in FEATURE_NAMES],'latency_p95');ch.addWidget(self.telemetry_metric);ch.addWidget(self.action_button('Экспорт…',lambda:self.export_visuals('telemetry_chart'),'download'));ch.addWidget(self.action_button('Окна CSV',self.export_windows,'download'));self.telemetry_chart=Chart();self.telemetry_chart.setMinimumHeight(200);cc.addWidget(self.telemetry_chart);split.addWidget(chart)
         log,lc,lh=panel('Журнал прохождения сообщений');self.trace_search=QLineEdit();self.trace_search.setPlaceholderText('Поиск по узлу, операции или статусу');lh.addWidget(self.trace_search);self.trace_filter=combo([('all','Все статусы'),('delivered','Доставлено'),('failed','Не доставлено')]);lh.addWidget(self.trace_filter)
+        lh.addWidget(self.action_button('Разобрать процедуру',self.show_procedure,'chart'))
         trace_page=QWidget();trace_layout=QVBoxLayout(trace_page);trace_layout.setContentsMargins(0,8,0,0)
         self.trace_table=table(['Время, s','Протокол','Операция','Маршрут','Задержка, ms','Статус','Процедура / этапы','Повторы']);trace_layout.addWidget(self.trace_table,1);self.trace_note=label('Равномерная выборка завершённых процедур. Агрегаты включают весь прогон.','Muted');self.trace_note.setWordWrap(True);trace_layout.addWidget(self.trace_note)
         self.details_tabs=QTabWidget();self.details_tabs.addTab(trace_page,'Транзакции');lc.addWidget(self.details_tabs,1)
@@ -372,11 +390,16 @@ class MainWindow(QMainWindow):
         self.mobility_table=table(['Начало / конец, s','Поток','gNB','AMF','UPF','Результат']);self.details_tabs.addTab(self.mobility_table,'5G · мобильность')
         split.addWidget(log);split.setSizes([270,350])
         self.telemetry_metric.currentIndexChanged.connect(self.refresh_telemetry_chart);self.trace_filter.currentIndexChanged.connect(self.refresh_traces);self.trace_search.textChanged.connect(self.refresh_traces)
+        self.trace_table.doubleClicked.connect(lambda index:self.call(self.show_procedure))
         return page
     def ml_page(self):
         outer=QScrollArea();outer.setWidgetResizable(True);content=QWidget();l=QVBoxLayout(content);l.setContentsMargins(0,0,0,0);l.setSpacing(15);outer.setWidget(content)
         data,dl,dh=panel('01  /  Датасет телеметрии','Разделение по независимым run_id: окна одного прогона не пересекаются между train, validation и test.')
         self.dataset_combo=combo([]);self.dataset_combo.currentIndexChanged.connect(self.choose_dataset);self.dataset_runs=spin(12,6,24);dh.addWidget(self.action_button('Импорт CSV',self.import_dataset,'folder'));dl.addLayout(row(self.dataset_combo,label('Прогонов','Muted'),self.dataset_runs,self.action_button('Сформировать',self.generate_dataset,'plus',True,True),self.action_button('CSV',self.export_dataset,'download')))
+        self.feature_set_combo=combo([(key,spec['title']) for key,spec in FEATURE_SETS.items()]);self.feature_set_combo.setCurrentIndex(4)
+        self.topology_variants=QCheckBox('Три варианта связности');self.topology_variants.setChecked(True)
+        self.topology_variants.setToolTip('Исходная схема и две схемы с дополнительными резервными каналами. Положения и названия узлов не создают новую топологию.')
+        dl.addLayout(row(label('Набор признаков','Muted'),self.feature_set_combo,self.topology_variants,stretch=True))
         self.dataset_info=label('Нет датасета. Сформируйте выборку или импортируйте телеметрию CSV.','Muted');self.dataset_info.setWordWrap(True);dl.addWidget(self.dataset_info);l.addWidget(data)
         model,mlayout,mh=panel('02  /  Обучение детектора')
         self.algorithm=combo([('random_forest','Random Forest'),('logistic','Logistic Regression'),('isolation_forest','Isolation Forest')]);self.trees=spin(120,20,300);self.train_seed=spin(42,0,2147483647);self.contamination=spin(.1,.001,.5,3)
@@ -385,6 +408,9 @@ class MainWindow(QMainWindow):
         for title,w in [('Алгоритм',self.algorithm),('Деревьев',self.trees),('Seed',self.train_seed),('Contamination',self.contamination),('Порог',self.threshold_mode)]:
             v=QVBoxLayout();v.addWidget(label(title,'Muted'));v.addWidget(w);config.addLayout(v,2 if w in (self.algorithm,self.threshold_mode) else 1)
         mlayout.addLayout(config);mh.addWidget(self.action_button('Обучить модель',self.train_model,'brain',True,True));self.algorithm_changed();l.addWidget(model)
+        self.evaluation_mode=combo([('run','Независимые прогоны'),('topology','Новая топология'),('fault','Новый тип отказа')]);self.holdout_value=combo([])
+        self.evaluation_mode.currentIndexChanged.connect(self.refresh_holdout)
+        mlayout.addLayout(row(label('Итоговая проверка','Muted'),self.evaluation_mode,label('Только в test','Muted'),self.holdout_value))
         evaluation,el,eh=panel('03  /  Качество и настройка','Метрики ниже относятся к независимой test-части. После ручного подбора порога по test нужна новая итоговая выборка.')
         self.model_combo=combo([]);self.model_combo.currentIndexChanged.connect(self.choose_model);eh.addWidget(self.model_combo);eh.addWidget(self.action_button('Отчёт JSON',self.export_model,'download'))
         metrics=QHBoxLayout();self.ml_metrics=[Metric(t) for t in ['F1-SCORE','PRECISION','RECALL','ROC AUC']]
@@ -394,6 +420,7 @@ class MainWindow(QMainWindow):
         self.importance=table(['Признак','Важность']);self.importance.setMaximumHeight(220);detail.addWidget(self.importance,1);el.addLayout(detail)
         tr=QHBoxLayout();tr.addWidget(label('Порог срабатывания','Muted'));self.threshold=QSlider(Qt.Orientation.Horizontal);self.threshold.setRange(0,1000);self.threshold.setValue(500);self.threshold.setAccessibleName('Порог детектора');tr.addWidget(self.threshold,1);self.threshold_label=label('0,500','Badge');tr.addWidget(self.threshold_label);el.addLayout(tr)
         self.threshold.valueChanged.connect(self.threshold_changed);self.model_info=label('Модель ещё не обучена.','Muted');self.model_info.setWordWrap(True);el.addWidget(self.model_info)
+        self.operational_info=label('Время обнаружения и ложные тревоги появятся после обучения.','Muted');self.operational_info.setWordWrap(True);el.addWidget(self.operational_info)
         curves=QHBoxLayout();self.roc_chart=Chart();self.roc_chart.setMinimumHeight(175);self.pr_chart=Chart();self.pr_chart.setMinimumHeight(175);curves.addWidget(self.roc_chart);curves.addWidget(self.pr_chart);el.addLayout(curves);l.addWidget(evaluation)
         inference,il,ih=panel('Проверить модель на другом прогоне');self.inference_run=combo([]);ih.addWidget(self.inference_run);ih.addWidget(self.action_button('Применить',self.predict,'play',True,True));self.prediction_table=table(['Время, s','Оценка','Детектор','Метка сценария']);self.prediction_table.setMaximumHeight(200);il.addWidget(self.prediction_table);self.prediction_info=label('Выберите сохранённую модель и завершённый эксперимент.','Muted');il.addWidget(self.prediction_info);l.addWidget(inference);l.addStretch()
         return outer
@@ -558,6 +585,7 @@ class MainWindow(QMainWindow):
         p=self.project;self.project_name.setText(p['name']);self.duration.setValue(p['duration']);self.seed.setValue(p['seed']);self.window_size.setValue(p['window'])
         for w,key in [(self.engine_combo,'engine'),(self.routing_combo,'routing_mode'),(self.label_combo,'label_policy')]:w.setCurrentIndex(w.findData(p[key]))
         self.trace_limit.setValue(p['trace_limit'])
+        self.journal_sessions.setValue(p['journal_sessions']);self.journal_events.setValue(p['journal_events'])
         self.degradation_threshold.setValue(p['degradation_latency_ms'])
         self.control_plane_check.setChecked(p['control_plane']);self.knowledge_combo.setCurrentIndex(self.knowledge_combo.findData(p['routing_knowledge']));self.route_refresh.setValue(p['route_refresh_ms'])
         populate(self.flows_table,[[f['source']+' → '+f['target'],f['protocol'],f['operation'],number(f['rate']),f['message_bytes'],number(f['timeout_ms'])] for f in p['flows']])
@@ -565,6 +593,7 @@ class MainWindow(QMainWindow):
     def apply_experiment(self):
         v=dict(name=self.project_name.text().strip(),duration=self.duration.value(),seed=self.seed.value(),window=self.window_size.value(),engine=self.engine_combo.currentData(),routing_mode=self.routing_combo.currentData(),label_policy=self.label_combo.currentData(),trace_limit=self.trace_limit.value(),degradation_latency_ms=self.degradation_threshold.value())
         if not v['name']:raise ValueError('Введите название проекта')
+        v.update(journal_sessions=self.journal_sessions.value(),journal_events=self.journal_events.value(),journal_procedure_id=None)
         v.update(control_plane=self.control_plane_check.isChecked(),routing_knowledge=self.knowledge_combo.currentData(),route_refresh_ms=self.route_refresh.value())
         self.mutate('Изменить эксперимент',lambda p:p.update(v))
     def edit_flow(self,existing=False):
@@ -677,6 +706,7 @@ class MainWindow(QMainWindow):
         if not self.run_record:return
         text=self.trace_search.text().lower();kind=self.trace_filter.currentData();rows=sorted(self.run_record['traces'],key=lambda r:r['time'])
         filtered=[r for r in rows if (kind=='all' or (r['status']=='delivered')==(kind=='delivered')) and (not text or text in json.dumps(r).lower())]
+        self.visible_traces=filtered
         populate(self.trace_table,[[number(r['time'],3),r['protocol'],r['operation'],' → '.join(r['route']),number(r['latency_ms'],2),r['status'],str(r.get('procedure_id','—'))+' / '+str(r.get('steps_completed','—')),r.get('retries',0)] for r in filtered])
         policy='Равномерная выборка завершённых процедур' if self.run_record.get('trace_policy') else 'Первые завершённые сообщения (v1)'
         self.trace_note.setText(f'Показано {len(filtered)} из {len(rows)} записей. {policy}; агрегаты учитывают все {self.run_record["summary"]["sent"]:,}.')
@@ -725,34 +755,57 @@ class MainWindow(QMainWindow):
         algorithm=self.algorithm.currentData();self.trees.setEnabled(algorithm!='logistic');self.contamination.setEnabled(algorithm=='isolation_forest');self.threshold_mode.setEnabled(algorithm=='isolation_forest')
     def refresh_ml(self):
         d=self.dataset_record;m=self.model_record
+        if d and getattr(self,'feature_dataset_id',None)!=d['id']:
+            self.feature_dataset_id=d['id'];self.feature_set_combo.setCurrentIndex(max(0,self.feature_set_combo.findData(d['metadata'].get('feature_set','legacy-v1'))))
+        self.refresh_holdout()
         self.dataset_info.setText(f'{d["metadata"]["rows"]} окон  ·  {d["metadata"]["runs"]} независимых прогонов  ·  {d["metadata"]["positives"]} аномальных окон  ·  источник: {d["metadata"]["source"]}' if d else 'Нет датасета. Сформируйте выборку или импортируйте CSV.')
+        if d:self.dataset_info.setText(self.dataset_info.text()+'  ·  '+d['metadata'].get('feature_set','legacy-v1')+f'  ·  топологий: {len({r.get("topology_id") for r in d["rows"] if r.get("topology_id")}) or "нет сведений"}')
         if not m:
             self.display_model_id=None;self.current_threshold=None
             for metric in self.ml_metrics:metric.update_value('—','')
-            populate(self.confusion,[]);populate(self.importance,[]);self.model_info.setText('Модель ещё не выбрана.');self.roc_chart.set_series([]);self.pr_chart.set_series([]);return
+            populate(self.confusion,[]);populate(self.importance,[]);self.model_info.setText('Модель ещё не выбрана.');self.operational_info.setText('Нет итоговой проверки.');self.roc_chart.set_series([]);self.pr_chart.set_series([]);return
         if self.display_model_id!=m['id']:
             self.display_model_id=m['id'];self.current_threshold=m['threshold']
         self.threshold.blockSignals(True);self.threshold.setValue(round(self.current_threshold*1000));self.threshold.blockSignals(False);self.threshold_label.setText(number(self.current_threshold,3));self.render_model_metrics(ml.metrics(m['test_labels'],m['test_scores'],self.current_threshold))
         populate(self.importance,[[FEATURE_NAMES.get(r['feature'],r['feature']),number(r['value'],4)] for r in m['importance']])
         self.roc_chart.set_series([dict(name='ROC curve · FPR / TPR',color='#82adfa',points=m['curves']['roc'])]);self.pr_chart.set_series([dict(name='Precision–Recall curve',color='#8fe0c2',points=m['curves']['pr'])])
-        self.model_info.setText(f'{m["algorithm"]}  ·  Train {m["split"]["train"]["samples"]} / Validation {m["split"]["validation"]["samples"]} / Test {m["split"]["test"]["samples"]}  ·  исходный порог {m["threshold"]:.3f}  ·  sklearn {m["sklearn_version"]}')
+        evaluation=m.get('evaluation',{});key=m.get('feature_set','legacy-v1')
+        self.model_info.setText(f'{m["algorithm"]}  ·  {FEATURE_SETS.get(key,{}).get("title",key)}  ·  Train {m["split"]["train"]["samples"]} / Validation {m["split"]["validation"]["samples"]} / Test {m["split"]["test"]["samples"]}  ·  проверка: {dict(run="прогоны",topology="топология",fault="тип отказа").get(evaluation.get("mode"),"прогоны")} {evaluation.get("holdout") or ""}  ·  исходный порог {m["threshold"]:.3f}')
+        self.render_operational()
+    def refresh_holdout(self):
+        if not hasattr(self,'evaluation_mode'):return
+        mode=self.evaluation_mode.currentData();previous=self.holdout_value.currentData();self.holdout_value.clear()
+        if self.dataset_record:
+            rows=self.dataset_record['rows']
+            values=sorted({r['topology_id'] for r in rows if 'topology_id' in r}) if mode=='topology' else sorted({v for r in rows for v in r.get('fault_types',[])}) if mode=='fault' else []
+            for value in values:self.holdout_value.addItem(NAMES.get(value,value),value)
+        self.holdout_value.setEnabled(mode!='run')
+        if self.holdout_value.findData(previous)>=0:self.holdout_value.setCurrentIndex(self.holdout_value.findData(previous))
+    def render_operational(self):
+        m=self.model_record
+        if not m:return
+        op=operational_metrics(m['test_observations'],m['test_scores'],self.current_threshold) if m.get('test_observations') else m.get('operational',{})
+        if not op.get('available'):
+            self.operational_info.setText('Нет данных о длительности окон и времени отказов: скорость обнаружения и тревоги/час не оценены.');return
+        self.operational_info.setText(f'Обнаружено {op["detected"]} / {op["episodes"]} эпизодов · пропущено {op["missed"]} · задержка: средняя {number(op["delay_mean_s"],2)} s, max {number(op["delay_max_s"],2)} s · ложных тревог/час {number(op["false_alarms_per_hour"],2)} · нормальное наблюдение {number(op["normal_exposure_s"])} s. Решение — в конце окна; соседние тревоги объединены. Пропуски не считаются нулевой задержкой.')
     def render_model_metrics(self,met):
         self.model_metrics=met
         for tile,key in zip(self.ml_metrics,['f1','precision','recall','roc_auc']):tile.update_value(number(met[key],3),'TEST SET')
         c=met['confusion'];populate(self.confusion,[['Норма',f'{c[0][0]}  TN',f'{c[0][1]}  FP'],['Аномалия',f'{c[1][0]}  FN',f'{c[1][1]}  TP']])
     def threshold_changed(self,value):
         self.current_threshold=value/1000;self.threshold_label.setText(number(self.current_threshold,3));m=self.model_record
-        if m:self.render_model_metrics(ml.metrics(m['test_labels'],m['test_scores'],value/1000))
+        if m:self.render_model_metrics(ml.metrics(m['test_labels'],m['test_scores'],value/1000));self.render_operational()
         populate(self.prediction_table,[]);self.prediction_info.setText('Порог изменён. Повторите применение детектора к прогону.')
     def generate_dataset(self):
-        p=copy.deepcopy(self.project);count=self.dataset_runs.value()
+        p=copy.deepcopy(self.project);count=self.dataset_runs.value();feature_set=self.feature_set_combo.currentData();variants=self.topology_variants.isChecked()
         def done(r):self.dataset_record=r;self.refresh_library();self.show_page(3);self.statusBar().showMessage('Датасет сформирован: '+str(r['metadata']['rows'])+' окон',10000)
-        self.start_job('Генерация независимых прогонов и ML-признаков',lambda progress,cancel:research.dataset(p,count,p['name']+' / telemetry',progress,cancel),done)
+        self.start_job('Генерация независимых прогонов и ML-признаков',lambda progress,cancel:research.dataset(p,count,p['name']+' / telemetry',progress,cancel,feature_set=feature_set,topology_variants=variants),done)
     def train_model(self):
         if not self.dataset_record:raise ValueError('Выберите или сформируйте датасет')
         dataset_id=self.dataset_record['id'];algorithm=self.algorithm.currentData();seed=self.train_seed.value();trees=self.trees.value();contamination=self.contamination.value();mode=self.threshold_mode.currentData() if algorithm=='isolation_forest' else 'validation'
+        feature_set=self.feature_set_combo.currentData();evaluation=self.evaluation_mode.currentData();holdout=self.holdout_value.currentData()
         def done(r):self.model_record=r;self.refresh_library();self.statusBar().showMessage(f'Модель обучена. Test F1: {r["metrics"]["f1"]:.3f}',12000)
-        self.start_job('Обучение и независимая оценка детектора',lambda progress,cancel:research.train(dataset_id,algorithm,seed,trees,contamination,mode,progress,cancel),done)
+        self.start_job('Обучение и независимая оценка детектора',lambda progress,cancel:research.train(dataset_id,algorithm,seed,trees,contamination,mode,progress,cancel,feature_set=feature_set,evaluation_mode=evaluation,holdout_value=holdout),done)
     def import_dataset(self):
         path,_=QFileDialog.getOpenFileName(self,'Импорт телеметрии CSV','','CSV (*.csv)')
         if not path:return
@@ -829,11 +882,13 @@ class MainWindow(QMainWindow):
     def export_dataset(self):self.write_export(self.dataset_record,'dataset',True)
     def export_model(self):
         if not self.model_record:raise ValueError('Выберите модель')
-        r=copy.deepcopy(self.model_record);r['exploratory_threshold']=self.current_threshold;r['exploratory_test_metrics']=self.model_metrics;self.write_export(r,'model')
+        r=copy.deepcopy(self.model_record);r['exploratory_threshold']=self.current_threshold;r['exploratory_test_metrics']=self.model_metrics
+        if r.get('test_observations'):r['exploratory_operational']=operational_metrics(r['test_observations'],r['test_scores'],self.current_threshold)
+        self.write_export(r,'model')
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.10.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.12.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return
