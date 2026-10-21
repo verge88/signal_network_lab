@@ -93,7 +93,10 @@ def sweep(project, values, repetitions=3, progress=None, cancel=None):
     p=checked(project)
     if not 2<=len(values)<=8 or any(not math.isfinite(v) or v<=0 or v>5 for v in values):raise ValueError('Нужно 2–8 множителей в диапазоне (0, 5]')
     if len(set(values))!=len(values):raise ValueError('Множители не должны повторяться')
-    if not 1<=repetitions<=5:raise ValueError('Число повторений: 1–5')
+    if not 1<=repetitions<=1000:raise ValueError('Число повторений: 1–1000')
+    if p.engine=='procedures':
+        from .experiments import run_series,Options,Axis
+        return run_series(p,Options(axes=[Axis(path='load',values=values)],repetitions=repetitions,save_runs=True),progress,cancel)
     prepared=[]
     for v in values:
         for j in range(repetitions):
@@ -114,7 +117,8 @@ def sweep(project, values, repetitions=3, progress=None, cancel=None):
         for k in ['latency_p95','delivery_ratio','throughput']:
             vals=[r[k] for r in subset]
             group[k]=float(np.mean(vals))
-            group[k+'_ci95']=float(1.96*np.std(vals,ddof=1)/np.sqrt(len(vals))) if len(vals)>1 else None
+            from .experiments import interval
+            group[k+'_ci95']=interval(vals,k)['half_width']
         groups.append(group)
     return storage.save('sweep',f'Нагрузка / {p.name}',dict(results=results,groups=groups,metadata=dict(repetitions=repetitions,values=values)))
 

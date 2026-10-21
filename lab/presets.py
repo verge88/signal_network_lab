@@ -2,6 +2,7 @@ from .schema import Project
 
 
 def preset(name='hybrid'):
+    if name=='5g-ha':return ha_preset()
     if name=='5g-mobile':return mobile_preset()
     if name=='5g':return fiveg_preset()
     nodes = [
@@ -60,4 +61,18 @@ def mobile_preset():
     for n in p['nodes']:
         n.update(cache_entries=128,cache_ttl_s=20,context_limit=2000,context_ttl_s=60)
         if n['kind']=='UPF':n.update(upf_rate_mbps=1,upf_burst_bytes=12000,upf_queue_limit=32)
+    return Project.model_validate(p)
+
+
+def ha_preset():
+    p=fiveg_preset().model_dump();p['name']='5G SA / Репликация и резервирование';p['route_refresh_ms']=1000
+    for kind in ('AMF','SMF','UDR'):
+        old=next(n for n in p['nodes'] if n['kind']==kind);nid=old['id']+'-reserve'
+        p['nodes'].append(dict(old,id=nid,name=kind+' · резерв',host=nid+'.5gc.lab',y=old['y']+300))
+        for link in list(p['links']):
+            if old['id'] in (link['source'],link['target']):
+                p['links'].append(dict(link,id=link['id']+'-reserve',source=nid if link['source']==old['id'] else link['source'],target=nid if link['target']==old['id'] else link['target']))
+        p['clusters'].append(dict(id='ha-'+kind.lower(),name=kind+' · пара',members=[old['id'],nid],replication_delay_ms=40))
+    p['flows']=[dict(p['flows'][2],rate=.3,subscribers=10,pdu_session_count=3,session_lifetime_s=0,data_packets=80,data_interval_ms=500)]
+    p['incidents']=[dict(kind='node_restart',target='amf',start=20,duration=8,detection_ms=0,recovery_ms=0),dict(kind='node_restart',target='smf',start=40,duration=8,detection_ms=0,recovery_ms=0)]
     return Project.model_validate(p)

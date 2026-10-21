@@ -43,10 +43,16 @@ class FiveGSimulation(ProcedureSimulation):
         self.mobility=Mobility(self)
         from .sessions import SessionLifecycle
         self.session_lifecycle=SessionLifecycle(self)
+        if any(self.nodes[n].kind=='UDR' for n in self.clusters.members):self.repository=self.storage.store('repository_contexts',lambda n:n.context_limit,lambda n:n.context_ttl_s)
 
     def prepare(self):super().prepare();self.mobility.prepare()
 
-    def new(self,ident,f):super().new(ident,self.mobility.flow(f))
+    def new(self,ident,f):
+        f=self.mobility.flow(f)
+        if f.target in self.clusters.members:
+            target=self.clusters.resolve(f.target,f.source,'NGAP')
+            if target:f=f.model_copy(update=dict(target=target))
+        super().new(ident,f)
 
     def profile_matches(self,n,f,service=None):
         return (n.enabled and n.nf_status=='REGISTERED' and n.plmn==f.plmn
@@ -60,23 +66,31 @@ class FiveGSimulation(ProcedureSimulation):
         profiles=sorted(n.id for n in self.nodes.values() if n.kind==kind and self.profile_matches(n,f,service))
         candidates=[nid for nid in profiles if self.node_up(nid,self.t,True,observer=f.target)]
         if pinned:
+            if pinned in self.clusters.members:return self.clusters.resolve(pinned,f.target,'SBI')
             if pinned in profiles and pinned not in candidates:self.touch(pr,pinned)
             return pinned if pinned in candidates else None
         if not candidates:
             for nid in profiles:self.touch(pr,nid)
             return None
         selected=candidates[pr['subscriber']%len(candidates)] if self.p.routing_mode=='loadshare' else candidates[0]
+        if selected in self.clusters.members:selected=self.clusters.resolve(selected,f.target,'SBI')
         preferred=profiles[pr['subscriber']%len(profiles)] if self.p.routing_mode=='loadshare' else profiles[0]
         if preferred!=selected:self.touch(pr,preferred)
         return selected
 
     def resolve(self,pr,role,service=None):
-        if not role.startswith('@'):return role
+        if not role.startswith('@'):
+            if role in self.clusters.members:
+                proto='NGAP' if self.nodes[role].kind=='AMF' and pr['flow'].source not in self.clusters.members and role==pr['flow'].target else 'SBI'
+                observer=pr['flow'].source if proto=='NGAP' else pr['flow'].target
+                return self.clusters.resolve(role,observer,proto)
+            return role
         kind=role[1:]
         if kind=='gNB':return pr['flow'].source
-        if kind=='AMF':return pr['flow'].target
+        if kind=='AMF':return self.resolve(pr,pr['flow'].target)
         selected=pr['nf_selected'].get(kind)
-        if selected is not None:return selected
+        if selected is not None:
+            return self.clusters.resolve(selected,pr['flow'].target,'SBI') if selected in self.clusters.members else selected
         selected=self.select_nf(pr,kind,service)
         if selected is not None:pr['nf_selected'][kind]=selected
         self.journal.emit(pr['id'],'nf_selected',cause=pr.get('_journal_event'),nf_kind=kind,service=service,selected=selected,pinned=pr['flow'].nf_bindings.get(kind),selector=pr['subscriber'],mode=self.p.routing_mode)
@@ -170,6 +184,7 @@ class FiveGSimulation(ProcedureSimulation):
 
     def validate_request(self,pr,frame):
         n=self.nodes[frame['dst']];f=pr['flow'];op=frame['spec']['operation']
+        if not self.clusters.can_serve(n.id):return 'cluster_not_leader'
         owner=frame['spec'].get('pdu_owner')
         if owner is not None:f=self.procedures[owner]['flow']
         if n.plmn!=f.plmn:return 'plmn_not_supported'
@@ -185,7 +200,7 @@ class FiveGSimulation(ProcedureSimulation):
         return 'success'
 
     def app_arrival(self,msg):
-        if msg.get('category') in ('control','userplane','mobility'):return super().app_arrival(msg)
+        if msg.get('category') in ('control','userplane','mobility','replication'):return super().app_arrival(msg)
         if msg.get('rpc_id') is None:return super().app_arrival(msg)
         frame=self.rpcs[msg['rpc_id']];pr=self.procedures[frame['procedure']];spec=frame['spec']
         event=self.journal.message(msg,'message_arrived',node=msg['target'],result=msg['result'],elapsed_ms=self.t-msg['start'],parent_rpc=frame['parent'])
@@ -254,6 +269,7 @@ class FiveGSimulation(ProcedureSimulation):
     def respond(self,frame,result):
         if frame['server_epoch']!=self.node_epoch[frame['dst']]:return
         pr=self.procedures[frame['procedure']];op=frame['spec']['operation']
+        if result=='success' and not self.clusters.can_serve(frame['dst']):result='cluster_not_leader'
         if pr.get('mobility_obsolete') and frame['lifecycle_id'] is None:return
         flags={'Nausf UEAuthentication':'authenticated','5G Registration':'registered','Nsmf CreateSMContext':'sm_context','PFCP Session Establishment':'n4_session','5G PDU Session':'pdu_active','Nudm UECMRegistration':'ue_registered','Npcf SMPolicyCreate':'policy_active'}
         if result=='success' and 'dereg_epoch' in frame['spec'] and frame['spec']['dereg_epoch']!=self.session_lifecycle.epochs[tuple(frame['spec']['dereg_ue'])]:result='stale_deregistration'
@@ -275,13 +291,20 @@ class FiveGSimulation(ProcedureSimulation):
             ctx[flags[op]]=True
             self.contexts[self.context_key(pr,frame['dst'])]=ctx
         if result=='success':
+            if op=='Nudr Update' and frame['dst'] in self.clusters.members:
+                from .resources import CapacityError
+                try:
+                    key=self.context_key(pr,frame['dst']);self.repository[key]=dict(updated=True,procedure_id=pr['id'],operation=pr['flow'].operation)
+                    pr.setdefault('repository_tokens',{})[tuple(key[1:])]=self.clusters.entries[frame['dst']][('repository_contexts',tuple(key[1:]))]['stamp']
+                except CapacityError:result='context_limit'
+            if op=='Nudr Query' and frame['dst'] in self.clusters.members and not self.clusters.repository_read(pr,frame['dst'],self.context_key(pr,frame['dst'])):result='repository_version_missing'
             owner=frame['spec'].get('pdu_owner')
             if owner is not None:
                 node=self.procedures[owner]['flow'].target if op=='NGAP PDUResourceRelease' else frame['dst']
                 if op in ('PFCP Session Deletion','Npcf SMPolicyDelete','Nsmf ReleaseSMContext','5G PDU Session Release'):
                     self.session_lifecycle.delete(owner,node);self.session_lifecycle.complete_release(owner)
             if op in ('Nudm UECMDeregistration','Nausf AuthenticationContextRelease'):self.session_lifecycle.delete_registration(pr,frame['dst'])
-            if op=='5G Deregistration':self.session_lifecycle.deregister_complete(pr)
+            if op=='5G Deregistration':self.session_lifecycle.deregister_complete(pr,frame['dst'])
             if op=='5G Registration':self.session_lifecycle.registered(pr)
         if result!='success':self.node_stats[frame['dst']]['errors']+=1
         frame['reply']=result;self.cache[('5g',frame['dst'],pr['id'],frame['id'])]=result

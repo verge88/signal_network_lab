@@ -18,6 +18,8 @@ class TimedStore(MutableMapping):
         self.orders[self.node_key(key)].move_to_end(key)
         return item[0]
     def __setitem__(self,key,value):
+        self.put(key,value)
+    def put(self,key,value,deadline=None):
         node=self.node_key(key);self.purge(node);order=self.orders.setdefault(node,OrderedDict());limit=self.limit(self.e.nodes[node])
         if not limit:return
         if key not in self.data and len(order)>=limit:
@@ -26,7 +28,7 @@ class TimedStore(MutableMapping):
                 if hasattr(self.e,'telemetry'):self.e.telemetry.count('context_rejected')
                 raise CapacityError('context_limit')
             self.remove(next(iter(order)),'evicted')
-        self.serial+=1;deadline=self.e.t+self.ttl(self.e.nodes[node])*1000
+        self.serial+=1;deadline=self.e.t+self.ttl(self.e.nodes[node])*1000 if deadline is None else deadline
         added=key not in self.data
         self.data[key]=(value,deadline,self.serial);order[key]=None;order.move_to_end(key);self.stats['writes']+=1
         if added and hasattr(self.e,'telemetry'):self.e.telemetry.gauge('cache' if self.evict else 'context',1)
@@ -35,6 +37,7 @@ class TimedStore(MutableMapping):
         if len(self.expirations)>4*len(self.data)+1024:
             self.expirations=[(v[1],v[2],k) for k,v in self.data.items()];heapq.heapify(self.expirations)
         if deadline<=self.e.p.duration*1000:self.e.push(deadline,'resource_expire',(self.name,key,self.serial),0)
+        if hasattr(self.e,'clusters'):self.e.clusters.capture(self.name,key,value,deadline)
     def __delitem__(self,key):
         if key not in self.data:raise KeyError(key)
         self.remove(key,'released')
@@ -49,6 +52,7 @@ class TimedStore(MutableMapping):
                 self.e.telemetry.count(category+'_'+reason)
             if getattr(self.e,'journal',None):self.e.journal.store_change(self.name,key,None,None,reason)
             if hasattr(self.e,'session_lifecycle'):self.e.session_lifecycle.context_removed(self.name,key,removed,reason)
+            if hasattr(self.e,'clusters'):self.e.clusters.capture(self.name,key,None,None,reason)
     def purge(self,node=None):
         while self.expirations and self.expirations[0][0]<=self.e.t:
             _,token,key=heapq.heappop(self.expirations);self.expire(key,token)
@@ -72,10 +76,11 @@ class StorageResources:
         e.telemetry.count('db_requests')
         pr=e.procedures[msg['procedure']];key=(n,pr['flow'].source,pr['subscriber'],msg['operation'])
         transaction=('5g',n,pr['id'],msg['rpc_id']) if msg.get('rpc_id') is not None else (n,pr['id'],msg['step'])
-        if transaction in e.cache:
+        cacheable=msg.get('category')!='replication'
+        if cacheable and transaction in e.cache:
             e.telemetry.count('cache_hits')
             e.journal.message(msg,'database_bypassed',node=n,reason='transaction_cache_hit');stat['deduplicated']+=1;e.complete_node(n,msg,arrival);return
-        if key in self.data_cache:
+        if cacheable and key in self.data_cache:
             e.telemetry.count('cache_hits')
             e.journal.message(msg,'database_bypassed',node=n,reason='data_cache_hit');stat['hits']+=1;e.complete_node(n,msg,arrival);return
         stat['misses']+=1;self.serial+=1;ident=self.serial
@@ -113,7 +118,9 @@ class StorageResources:
         self.running[n].discard(task['id'])
         if task['epoch']==e.node_epoch[n] and e.node_up(n,e.t) and e.usable(task['msg']):
             if error:task['msg']['resource_error']=error
-            else:self.data_cache[task['key']]=True;self.stats[n]['completed']+=1
+            else:
+                if task['msg'].get('category')!='replication':self.data_cache[task['key']]=True
+                self.stats[n]['completed']+=1
             e.complete_node(n,task['msg'],task['arrival'])
         self.pump(n)
     def event(self,kind,data):

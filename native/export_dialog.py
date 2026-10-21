@@ -22,7 +22,7 @@ class ExportDialog(QDialog):
         for source in sources:
             if source['kind']=='table':snapshot={scope:table_data(source['widget'],source['title'],scope=='selected') for scope in ('all','selected')}
             elif source['kind']=='topology':snapshot={scope:topology_data(source['widget'],source['title'],scope=='selected') for scope in ('all','selected')}
-            else:snapshot={'all':chart_data(source['widget'],source['title'])}
+            else:snapshot={'all':chart_data(source['widget'],source['title'],source.get('x_label','Время, s'),source.get('y_label',''))}
             for data in snapshot.values():data.metadata=copy.deepcopy(source.get('metadata',{}))
             self.snapshots[source['key']]=snapshot
         initial_source=next((s for s in sources if s['key']==initial),sources[0])

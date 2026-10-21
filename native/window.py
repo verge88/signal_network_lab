@@ -166,8 +166,11 @@ class MainWindow(QMainWindow):
         self.menu_action(research_menu,'Проверка достоверности…',self.show_validation)
         self.menu_action(research_menu,'Пошаговый разбор процедуры…',self.show_procedure)
         self.menu_action(research_menu,'Жизненный цикл 5G-сессий…',self.show_session_lifecycle)
+        self.menu_action(research_menu,'Кластеры и репликация…',self.show_clusters)
+        self.menu_action(research_menu,'Конструктор серий…',self.show_experiments)
         self.help_action=self.menu_action(help_menu,'Руководство пользователя',self.show_help,'F1')
         self.menu_action(templates,'5G · мобильность и QoS',lambda:self.new_project('5g-mobile'))
+        self.menu_action(templates,'5G · репликация и резерв',lambda:self.new_project('5g-ha'))
         self.menu_action(help_menu,'Основы сигнальных сетей',lambda:self.show_help('Основы сигнальных сетей'))
         self.menu_action(help_menu,'Словарь сокращений',lambda:self.show_help('Словарь сокращений'))
         help_menu.addSeparator();self.menu_action(help_menu,'О модели и ограничениях',self.about);self.menu_action(help_menu,'Горячие клавиши',self.shortcuts)
@@ -187,6 +190,17 @@ class MainWindow(QMainWindow):
             from .session_dialog import SessionDialog
             self.session_dialog=SessionDialog(self)
         self.session_dialog.set_run(self.run_record);self.session_dialog.show();self.session_dialog.raise_();self.session_dialog.activateWindow()
+    def show_experiments(self,record=None):
+        if not getattr(self,'experiment_dialog',None):
+            from .experiment_dialog import ExperimentDialog
+            self.experiment_dialog=ExperimentDialog(self);self.experiment_dialog.reload_project()
+        if record:self.experiment_dialog.set_record(record)
+        self.experiment_dialog.show();self.experiment_dialog.raise_();self.experiment_dialog.activateWindow()
+    def show_clusters(self):
+        if not getattr(self,'cluster_dialog',None):
+            from .cluster_dialog import ClusterDialog
+            self.cluster_dialog=ClusterDialog(self)
+        self.cluster_dialog.reload();self.cluster_dialog.show();self.cluster_dialog.raise_();self.cluster_dialog.activateWindow()
 
     def show_procedure(self,procedure_id=None):
         if not self.run_record:raise ValueError('Сначала выполните или выберите сохранённый прогон')
@@ -363,8 +377,9 @@ class MainWindow(QMainWindow):
         ih.addWidget(self.action_button('Конструктор атак',lambda:self.show_page(6),'shield'))
         for text,fn,ico in [('Запланировать',lambda:self.edit_incident(False),'plus'),('Изменить',lambda:self.edit_incident(True),'settings'),('Удалить',self.delete_incident,'trash')]:ih.addWidget(self.action_button(text,fn,ico))
         self.incidents_table=table(['Событие','Объект','Начало, s','Длительность, s','Множитель']);self.incidents_table.setMinimumHeight(145);self.incidents_table.setMaximumHeight(230);self.incidents_table.doubleClicked.connect(lambda idx:self.call(self.edit_incident,True));ic.addWidget(self.incidents_table);l.addWidget(incidents)
-        sweep,sc,sh=panel('Параметрическое исследование','Сопоставленные seed между уровнями нагрузки. Среднее ± приближённый 95% интервал; при малом числе повторов интервал ориентировочный.')
-        self.sweep_values=QLineEdit('0.5, 1, 1.5, 2');self.sweep_repeats=spin(3,1,5);sc.addLayout(row(label('Множители нагрузки','Muted'),self.sweep_values,label('Повторов','Muted'),self.sweep_repeats,self.action_button('Запустить серию',self.start_sweep,'experiment',True,True)))
+        sweep,sc,sh=panel('Параметрическое исследование','Независимые повторения с сопоставленными seed. Конструктор добавляет прогрев, несколько параметров, контроль точности и поиск допустимой нагрузки.')
+        sh.addWidget(self.action_button('Конструктор серий…',self.show_experiments,'settings'))
+        self.sweep_values=QLineEdit('0.5, 1, 1.5, 2');self.sweep_repeats=spin(10,1,1000);sc.addLayout(row(label('Множители нагрузки','Muted'),self.sweep_values,label('Повторов','Muted'),self.sweep_repeats,self.action_button('Запустить серию',self.start_sweep,'experiment',True,True)))
         self.sweep_table=table(['Нагрузка','Повторов','p95 ± CI, ms','Доставка','Throughput']);self.sweep_table.setMinimumHeight(150);self.sweep_table.hide();sc.addWidget(self.sweep_table);l.addWidget(sweep);l.addStretch()
         calibration,ca,cah=panel('Калибровка по измерениям','CSV независимых опытов: run_id, offered_rate и измеренные метрики. Подбор на train; отчёт на отложенных run_id.')
         cah.addWidget(self.action_button('Шаблон CSV',self.calibration_template,'download'));cah.addWidget(self.action_button('Подобрать параметры',self.start_calibration,'experiment',True,True))
@@ -569,6 +584,7 @@ class MainWindow(QMainWindow):
     def delete_selected(self):
         kind,rid=self.selected
         if not kind:return
+        if kind=='node' and any(rid in c['members'] for c in self.project.get('clusters',[])):raise ValueError('Узел входит в кластер. Сначала измените его состав в меню «Исследование → Кластеры и репликация».')
         if kind=='node' and any(rid in (m['gnb'],m['amf'],m['upf']) for f in self.project['flows'] for m in f['mobility']):raise ValueError('Узел используется расписанием мобильности. Сначала измените цель перемещения в редакторе потока.')
         removed_links={l['id'] for l in self.project['links'] if rid in (l['source'],l['target'])} if kind=='node' else {rid}
         if any((s['effect'] in NODE_EFFECTS and kind=='node' and s['target']==rid) or (s['effect'] not in NODE_EFFECTS and s['effect']!='surge' and s['target'] in removed_links) for a in self.project.get('attacks',[]) for s in a['steps']):raise ValueError('Объект используется сценарием атаки. Сначала измените цель или удалите сценарий во вкладке «Атаки».')
@@ -644,7 +660,7 @@ class MainWindow(QMainWindow):
         for b in self.compute_buttons:b.setEnabled(False)
         job.signals.progress.connect(self.progress.setValue)
         job.signals.result.connect(lambda r:self.call(done,r));job.signals.result.connect(self.job_completed)
-        job.signals.failed.connect(self.error);job.signals.cancelled.connect(lambda:self.statusBar().showMessage('Вычисление отменено. Уже завершённые прогоны серии сохранены.',10000));job.signals.finished.connect(self.finish_job)
+        job.signals.failed.connect(self.error);job.signals.cancelled.connect(lambda:self.statusBar().showMessage('Вычисление отменено. Отдельные прогоны сохранены, если это включено в настройках серии.',10000));job.signals.finished.connect(self.finish_job)
         self.thread_pool.start(job)
     def tick(self):
         if self.active_job:self.elapsed.setText(f'{int(time.monotonic()-self.started)} с')
@@ -662,6 +678,8 @@ class MainWindow(QMainWindow):
         values=[float(v.strip()) for v in self.sweep_values.text().split(',')];reps=self.sweep_repeats.value();p=copy.deepcopy(self.project)
         self.start_job('Серия экспериментов по нагрузке',lambda progress,cancel:research.sweep(p,values,reps,progress,cancel),self.show_sweep)
     def show_sweep(self,r):
+        if r.get('contract')=='experiments-v1':
+            self.sweep_record=r;self.show_experiments(r);return
         self.sweep_record=r;self.sweep_table.show();populate(self.sweep_table,[[g['multiplier'],g['n'],number(g['latency_p95'])+(' ± '+number(g['latency_p95_ci95']) if g['latency_p95_ci95'] is not None else ''),percent(g['delivery_ratio']),number(g['throughput'])] for g in r['groups']]);self.show_page(1)
     def calibration_template(self):
         from lab.calibration import TEMPLATE
@@ -897,7 +915,7 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.13.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.15.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return

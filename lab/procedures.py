@@ -12,7 +12,7 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import CancelledError
 import numpy as np
 
-ENGINE_VERSION = '2.8.0'
+ENGINE_VERSION = '2.9.0'
 CONTRACT = 'procedures-v2'
 ANSWERS = {'MAP UpdateLocation': 'MAP UpdateLocationResult',
            'MAP SendAuthenticationInfo': 'MAP AuthenticationInfoResult',
@@ -81,6 +81,8 @@ class ProcedureSimulation:
         self.journal=ProcedureJournal(self)
         from .telemetry import Telemetry
         self.telemetry=Telemetry(self)
+        from .clusters import StateClusters
+        self.clusters=StateClusters(self)
 
     def check(self, value=None):
         if self.cancel and self.cancel():
@@ -257,6 +259,7 @@ class ProcedureSimulation:
     def prepare(self):
         self.check(0)
         self.control.prepare()
+        self.clusters.prepare()
         for lid, l in self.links.items():
             if l.startup_ms and not self.p.control_plane:
                 handshake={'Diameter':'CER / CEA','M3UA':'ASPUP / ASPUP_ACK','NGAP':'SCTP_SETUP','SBI':'HTTP2_SETUP','PFCP':'ASSOCIATION_SETUP','SS7':'LINK_ALIGNMENT'}
@@ -331,6 +334,10 @@ class ProcedureSimulation:
         pr['_journal_event']=self.journal.emit(pr['id'],'timer_set',cause=pr.get('_journal_event'),timer_id=timer,timer_type='procedure',deadline_ms=self.t+f.timeout_ms,attempt=pr['attempt'],step=pr['step'])
         pr['_journal_timer']=pr['_journal_event']
         self.push(self.t+f.timeout_ms, 'timeout', (pr['id'], pr['step'], pr['attempt']), 0)
+        if f.target in self.clusters.members:
+            destination=self.clusters.resolve(f.target,f.source,f.protocol)
+            if destination is None:pr['last_cause']='cluster_unavailable';return
+            pr['destination']=destination
         self.send_message(pr, f.source, pr['destination'], 'request', pr['steps'][pr['step']], f.message_bytes)
 
     def send_message(self, pr, src, dst, role, operation, size, result='success', step=None, protocol=None, rpc_id=None,category='signalling',context=None):
@@ -408,7 +415,7 @@ class ProcedureSimulation:
                 return
             _, _, msg, arrival = heapq.heappop(queue)
             cost = 1.
-            application_work=msg.get('category','signalling')=='signalling' and n==msg['target'] and node.kind in ('HLR','HSS','SCP','UDM','UDR','AUSF','PCF')
+            application_work=n==msg['target'] and ((msg.get('category','signalling')=='signalling' and node.kind in ('HLR','HSS','SCP','UDM','UDR','AUSF','PCF')) or msg['operation']=='STATE_REPLICATE')
             if application_work:
                 cost = 1.5 if 'Authentication' in msg['operation'] or 'AIR' in msg['operation'] else 2.
             mean = node.processing_ms * cost
@@ -417,7 +424,7 @@ class ProcedureSimulation:
                 sigma = math.sqrt(math.log1p(node.service_cv**2)); service = self.rng.lognormal(math.log(mean)-sigma*sigma/2, sigma)
             else: service = mean
             embedded_database=0.
-            if application_work and node.storage_model=='probabilistic' and self.rng.random()>=node.cache_hit_ratio:embedded_database=node.database_ms;service+=embedded_database
+            if application_work and node.storage_model=='probabilistic' and (msg['operation']=='STATE_REPLICATE' or self.rng.random()>=node.cache_hit_ratio):embedded_database=node.database_ms;service+=embedded_database
             service = max(.0001, float(service))*self.effect_value('node_delay',n,self.t)
             self.touch(self.procedures[msg['procedure']],n)
             done = self.t+service
@@ -445,7 +452,7 @@ class ProcedureSimulation:
         if not self.usable(msg): return
         if not self.node_up(n, self.t): self.fail_message(msg, 'node_down'); return
         node=self.nodes[n]
-        if node.storage_model=='queued' and node.database_ms>0 and msg.get('category')=='signalling' and msg['role']=='request' and n==msg['target']:
+        if node.storage_model=='queued' and node.database_ms>0 and (msg.get('category')=='signalling' or msg['operation']=='STATE_REPLICATE') and msg['role']=='request' and n==msg['target']:
             self.storage.submit(n,msg,arrival);return
         self.complete_node(n,msg,arrival)
 
@@ -475,6 +482,7 @@ class ProcedureSimulation:
         for pid in self.journal.sessions:
             if n in self.procedures[pid]['objects']:
                 fault_events[pid]=self.journal.emit(pid,'node_fault',node=n,reason=kind)
+        self.clusters.node_fault(n,kind=='node_restart')
         self.storage.node_fault(n,kind=='node_restart',fault_events)
         if kind=='node_restart' and self.p.control_plane:self.control.node_restart(n)
         for msg, lo, _, _ in self.running[n].values():
@@ -672,6 +680,7 @@ class ProcedureSimulation:
         self.packet_send(packet,lid,src)
 
     def app_arrival(self, msg):
+        if msg.get('category')=='replication':self.clusters.arrival(msg);return
         event=self.journal.message(msg,'message_arrived',node=msg['target'],result=msg['result'],elapsed_ms=self.t-msg['start'])
         if event:self.procedures[msg['procedure']]['_journal_event']=event
         if msg.get('category')=='mobility':self.mobility.arrival(msg);return
@@ -689,6 +698,7 @@ class ProcedureSimulation:
                 state = self.subscribers.get(state_key,'new')
                 result = msg.get('resource_error','success')
                 kind=self.nodes[dst].kind
+                if not self.clusters.can_serve(dst):result='cluster_not_leader'
                 if result!='success':pass
                 elif (msg['operation'].startswith('MAP') and kind not in ('HLR','SCP')) or (msg['operation'] in ('Diameter AIR','Diameter ULR') and kind!='HSS') or (msg['operation']=='ISUP IAM' and kind!='MSC'):result='unsupported_service'
                 elif f.procedure=='registration' and msg['step']>0 and state not in ('authenticated','registered'): result='session_state_lost'
@@ -775,11 +785,13 @@ class ProcedureSimulation:
             elif kind.startswith('resource_'):self.storage.event(kind,data)
             elif kind.startswith('mobility_'):self.mobility.event(kind,data)
             elif kind.startswith('session_'):self.session_lifecycle.event(kind,data)
+            elif kind.startswith('cluster_'):self.clusters.event(kind,data)
             self.journal.actor=None
             if self.steps>12000000: raise ValueError('Превышен лимит 12 млн событий; уменьшите нагрузку, размеры или число повторов')
         self.reporting=True
         result=self.report();result['control_plane']=self.control.report()
         result['resources']=self.storage.report()
+        result['clusters']=self.clusters.report()
         result['config_sha256']=hashlib.sha256(json.dumps(self.original_project.model_dump(),sort_keys=True).encode()).hexdigest()
         result['attacks']=self.report_attacks()
         for i,origin in self.attack_origins.items():result['incidents'][i].update(origin)

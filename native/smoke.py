@@ -1,5 +1,6 @@
 """Development smoke harness executed inside the application, never against another app."""
 import json
+import traceback
 from PySide6.QtCore import QObject,QTimer,QSettings,Qt,QPoint,QPointF
 from PySide6.QtGui import QImage,QPalette
 from PySide6.QtTest import QTest
@@ -15,7 +16,7 @@ class SmokeTest(QObject):
         super().__init__(window);self.app=app;self.window=window;self.output=output;self.stage=0;self.errors=[];self.completed=[]
         if output:output.mkdir(parents=True,exist_ok=True)
         self.window.error=self.fail
-        self.timeout=QTimer(self);self.timeout.setSingleShot(True);self.timeout.timeout.connect(lambda:self.fail('Native self-test timed out'));self.timeout.start(120000)
+        self.timeout=QTimer(self);self.timeout.setSingleShot(True);self.timeout.timeout.connect(lambda:self.fail('Native self-test timed out'));self.timeout.start(180000)
     def fail(self,text):
         self.errors.append(str(text))
         if self.output:(self.output/'native-smoke.json').write_text(json.dumps(dict(status='failed',checks=self.completed,errors=self.errors),indent=2),encoding='utf-8')
@@ -150,7 +151,7 @@ class SmokeTest(QObject):
             self.completed.append('native forms, selection, undo/redo')
             w.job_completed.connect(self.next_stage)
             w.start_run()
-        except Exception as e:self.fail(e)
+        except Exception:self.fail(traceback.format_exc())
     def verify_expanded_ml(self):
         from lab.presets import preset
         from lab.features import SETS
@@ -448,6 +449,84 @@ class SmokeTest(QObject):
             assert not w.draw_link_button.isChecked() and not w.draw_link_action.isChecked()
             self.completed.append('mouse link creation: port drag in all themes, two-click mode, prefilled dialog, cancellation, unchanged positions and undo/redo')
         finally:w.graph.set_connection_mode(False);w.apply_theme(original_theme,persist=False)
+    def verify_clusters(self):
+        from copy import deepcopy
+        from lab.presets import preset
+        from lab.fiveg import FiveGSimulation
+        from lab.schema import Incident,StateCluster
+        from .cluster_dialog import cluster_editor
+        from .export_dialog import ExportDialog
+        from .exporting import export_file
+        w=self.window;previous=w.run_record;project=deepcopy(w.project);theme=w.theme
+        p=preset('5g-ha');p.duration=10;p.window=1;p.control_plane=False;p.routing_knowledge='shared';p.flows[0].rate=0;p.flows[0].subscribers=1
+        for link in p.links:link.loss=0;link.jitter_ms=0
+        p.incidents=[Incident(kind='node_restart',target='amf',start=2,duration=6,detection_ms=0,recovery_ms=0)]
+        for c in p.clusters:c.heartbeat_ms=100;c.heartbeat_timeout_ms=300;c.failover_ms=200;c.sync_ms=200
+        class Scheduled(FiveGSimulation):
+            def prepare(self):super().prepare();self.total=1;self.push(100,'new',(1,self.p.flows[0]))
+        result=dict(id='cluster-fixture',name='AMF / SMF / UDR · резерв после перезапуска',project=p.model_dump(),**Scheduled(p).run())
+        assert result['summary']['delivered']==1 and any(v['event']=='session_rebound' for v in result['clusters']['events'])
+        try:
+            w.install_project(p.model_dump());w.run_record=result;w.show_clusters();d=w.cluster_dialog
+            assert d.configuration.rowCount()==3 and d.groups.rowCount()==3 and d.views.rowCount()==6 and d.events.rowCount()>0
+            editor=cluster_editor(d,w.project,w.project['clusters'][0]);assert StateCluster.model_validate(editor.values()).members==p.clusters[0].members
+            editor.tabs.setCurrentIndex(1);editor.show();self.app.processEvents()
+            if self.output:editor.grab().save(str(self.output/'cluster-options.png'))
+            editor.close();editor.deleteLater()
+            before=deepcopy(w.project['clusters']);d.configs[0]['replication_delay_ms']+=10;d.apply_config();assert w.project['clusters'][0]['replication_delay_ms']==before[0]['replication_delay_ms']+10
+            w.undo.undo();assert w.project['clusters']==before;d.reload()
+            for name in ('monochrome','light_monochrome','dark','graphite','porcelain'):
+                w.apply_theme(name,persist=False);d.tabs.setCurrentIndex(1);d.show();self.app.processEvents()
+                if self.output:d.grab().save(str(self.output/f'{name}-cluster-results.png'))
+            for index,title in [(0,'configuration'),(2,'views'),(3,'events')]:
+                d.tabs.setCurrentIndex(index);self.app.processEvents()
+                if self.output:d.grab().save(str(self.output/f'cluster-{title}.png'))
+            export=ExportDialog(d,d.export_sources());assert len(export.sources)==3 and len(export.data().rows)==3
+            if self.output:
+                for fmt in ('csv','json','xlsx','html','pdf'):export_file(self.output/('cluster-results.'+fmt),export.data(),export.style(),fmt)
+                (self.output/'state-clusters.json').write_text(json.dumps(result['clusters'],ensure_ascii=False,indent=2),encoding='utf-8')
+            export.close();export.deleteLater()
+            w.run_record=dict(id='legacy',project=p.model_dump());d.load_result();assert d.groups.rowCount()==0 and d.views.rowCount()==0 and 'отсутствует' in d.info.text()
+            w.run_record=result;d.load_result();d.close()
+            self.completed.append('state clusters: AMF/SMF/UDR HA preset, resource-bearing replication, session failover, native member/timing controls, project undo, saved views/events, legacy handling and styled exports in five themes')
+        finally:w.run_record=previous;w.install_project(project);w.apply_theme(theme,persist=False)
+
+    def verify_experiments(self):
+        from copy import deepcopy
+        from lab import experiments
+        from .export_dialog import ExportDialog
+        from .exporting import export_file
+        w=self.window;d=w.experiment_dialog;r=d.record;project=deepcopy(w.project);theme=w.theme
+        assert r['contract']=='experiments-v1' and len(r['results'])==12
+        assert d.points_table.rowCount()==2 and d.runs_table.rowCount()==12
+        assert all(v['warmup_s']==2 and v['observation_s']==8 for v in r['results'])
+        assert [v['seed'] for v in r['results'][:6]]==[v['seed'] for v in r['results'][6:]]
+        assert d.run_button.isEnabled()
+        d.points_table.selectRow(1);d.apply_point();assert w.project['flows'][0]['rate']==r['project']['flows'][0]['rate'];w.undo.undo();assert w.project==project
+        w.refresh_library();w.refresh_results()
+        index=next(i for i in range(w.series_table.rowCount()) if w.series_table.item(i,4).text()==r['id'])
+        w.series_table.selectRow(index);w.open_sweep();assert d.record['id']==r['id']
+        for name in ('monochrome','light_monochrome','dark','graphite','porcelain'):
+            w.apply_theme(name,persist=False);d.tabs.setCurrentIndex(0);self.app.processEvents()
+            if self.output:d.grab().save(str(self.output/f'{name}-experiment-plan.png'))
+            d.tabs.setCurrentIndex(1);self.app.processEvents()
+            if self.output:d.grab().save(str(self.output/f'{name}-experiment-results.png'))
+        export=ExportDialog(d,d.export_sources());assert len(export.sources)==3
+        assert export.snapshots['experiment_chart']['all'].x_label=='Номер точки'
+        if self.output:
+            for key in ('experiment_points','experiment_runs'):
+                for fmt in ('CSV','JSON','XLSX','HTML','PDF'):
+                    snapshot=export.snapshots[key]['all'];path=self.output/(key+'.'+fmt.lower());export_file(path,snapshot,export.style(),fmt.lower());assert path.stat().st_size>0
+            export_file(self.output/'experiment-chart.svg',export.snapshots['experiment_chart']['all'],export.style(),'svg')
+        export.close();export.deleteLater()
+        d.mode.setCurrentIndex(d.mode.findData('capacity'));d.adaptive.setChecked(True);d.repetitions.setValue(30);d.minimum.setValue(10)
+        d.tabs.setCurrentIndex(0);self.app.processEvents()
+        assert d.capacity_controls.isVisible() and not d.axes.isEnabled() and not d.absolute.isEnabled()
+        assert d.preview()['runs_max']==240
+        d.set_record(r);w.show_help('Серии экспериментов');assert 'Прогрев' in w.help_widget.reader.toPlainText()
+        d.close();w.apply_theme(theme,persist=False)
+        self.completed.append('experiment constructor: background repeats, exact warmup, paired seeds, native multidimensional/capacity controls, saved-series reopening, undo, interval charts and styled exports in five themes')
+
     def verify_session_lifecycle(self):
         from lab.presets import preset
         from lab.schema import Incident
@@ -661,7 +740,12 @@ class SmokeTest(QObject):
                     w.details_tabs.setCurrentIndex(index);self.app.processEvents();self.capture(name)
                 self.completed.append('5G SA native topology, NF/flow editors, registration, PDU sessions and service telemetry')
                 self.completed.append('resource-bearing management, per-observer routing knowledge, N3/N6 user traffic and native telemetry')
-                self.verify_session_lifecycle();self.verify_themes();self.verify_exports();w.show_page(0);w.undo.setClean()
+                from lab.presets import preset
+                config=preset('diameter');config.duration=10;config.window=1;config.flows[0].rate=.8
+                w.show_experiments();d=w.experiment_dialog;d.source=config.model_dump();d.axes.setRowCount(0);d.add_axis('load',[.5,1]);d.repetitions.setValue(6);d.warmup.setValue(2)
+                self.stage=6;d.start();assert not d.run_button.isEnabled()
+            elif self.stage==6:
+                self.verify_experiments();self.verify_clusters();self.verify_session_lifecycle();self.verify_themes();self.verify_exports();w.show_page(0);w.undo.setClean()
                 w.mutate('Проверка закрытия с историей',lambda p:p['nodes'][0].update(capacity=p['nodes'][0]['capacity']+1))
                 assert not w.undo.isClean()
                 self.completed.append('shutdown regression: destroy the actual main window with dirty undo history and reject exceptions raised during final cleanup')
@@ -669,4 +753,4 @@ class SmokeTest(QObject):
                 report=dict(status='passed',checks=self.completed,qt_widgets=True,webview=False)
                 if self.output:(self.output/'native-smoke.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
                 print(json.dumps(report),flush=True);self.app.exit(0)
-        except Exception as e:self.fail(e)
+        except Exception:self.fail(traceback.format_exc())

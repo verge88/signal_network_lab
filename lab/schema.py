@@ -260,6 +260,26 @@ class AttackScenario(BaseModel):
         return self
 
 
+class StateCluster(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    id: str=Field(min_length=1,max_length=50,pattern=r'^[\w-]+$')
+    name: str=Field(default='Кластер состояния',max_length=80)
+    members: list[str]=Field(min_length=2,max_length=6)
+    replication_delay_ms: float=Field(default=20,ge=0,le=30000)
+    heartbeat_ms: float=Field(default=500,ge=100,le=10000)
+    heartbeat_timeout_ms: float=Field(default=1500,ge=100,le=60000)
+    failover_ms: float=Field(default=500,ge=0,le=30000)
+    sync_ms: float=Field(default=2000,ge=100,le=60000)
+    request_timeout_ms: float=Field(default=2000,ge=10,le=60000)
+    partition_policy: Literal['availability','quorum']='availability'
+
+    @model_validator(mode='after')
+    def bounds(self):
+        if len(set(self.members))!=len(self.members):raise ValueError('Экземпляры кластера должны быть различными')
+        if self.heartbeat_timeout_ms<self.heartbeat_ms:raise ValueError('Тайм-аут heartbeat должен быть не меньше его интервала')
+        return self
+
+
 class Project(BaseModel):
     name: str = Field(default='Core Network / Research', max_length=100)
     nodes: list[Node] = Field(min_length=2, max_length=60)
@@ -267,6 +287,7 @@ class Project(BaseModel):
     flows: list[Flow] = Field(min_length=1, max_length=30)
     incidents: list[Incident] = Field(default_factory=list, max_length=30)
     attacks: list[AttackScenario] = Field(default_factory=list, max_length=20)
+    clusters: list[StateCluster]=Field(default_factory=list,max_length=10)
     duration: int = Field(default=60, ge=10, le=600)
     seed: int = Field(default=42, ge=0, le=2147483647)
     window: int = Field(default=5, ge=1, le=30)
@@ -323,6 +344,17 @@ class Project(BaseModel):
             if any(pc not in {x.point_code for x in self.nodes} for pc in n.gtt.values()):
                 raise ValueError('GTT ссылается на неизвестный point code')
         by_id={n.id:n for n in self.nodes}
+        clustered=set()
+        if self.clusters and self.engine!='procedures':raise ValueError('Кластеры требуют движок процедур')
+        if len({c.id for c in self.clusters})!=len(self.clusters):raise ValueError('ID кластеров должны быть уникальными')
+        for c in self.clusters:
+            if any(n not in ids for n in c.members):raise ValueError('Кластер ссылается на неизвестный узел')
+            if clustered.intersection(c.members):raise ValueError('Узел может входить только в один кластер')
+            clustered.update(c.members)
+            kinds={by_id[n].kind for n in c.members}
+            if len(kinds)!=1 or next(iter(kinds)) not in ('HSS','UDR','AMF','SMF'):raise ValueError('Кластер объединяет экземпляры одного типа: HSS, UDR, AMF или SMF')
+            profiles={(by_id[n].plmn,tuple(sorted(by_id[n].slices)),tuple(sorted(by_id[n].dnns))) for n in c.members}
+            if len(profiles)!=1:raise ValueError('Экземпляры кластера должны иметь одинаковые PLMN, срезы и DNN')
         for f in self.flows:
             if f.mobility and (f.protocol!='NGAP' or self.engine!='procedures'):raise ValueError('Мобильность требует поток 5G и движок процедур')
             times=[m.time for m in f.mobility]

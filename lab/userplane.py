@@ -47,6 +47,8 @@ class UserPlane:
 
     def context_valid(self,packet):
         e=self.e;pr=e.procedures[packet['procedure']];f=pr['flow']
+        smf=pr['nf_selected'].get('SMF')
+        if any(n in e.clusters.members and not e.clusters.can_serve(n) for n in (f.target,smf)):return False
         upf=e.session_lifecycle.context(pr['id'],packet['upf']);amf=e.session_lifecycle.context(pr['id'],f.target)
         record=e.session_lifecycle.records[pr['id']]
         return bool(record['state']=='ACTIVE' and not e.mobility.busy(f.id) and not self.sessions[pr['id']].get('released') and upf.get('n4_session') and amf.get('pdu_active') and all(ctx.get('owner')==pr['id'] for ctx in (upf,amf)))

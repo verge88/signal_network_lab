@@ -12,6 +12,7 @@ KINDS=dict(procedure_start='Начало процедуры',procedure_finished=
 KINDS.update(cpu_aborted='CPU прерван отказом',cpu_queue_aborted='Очередь CPU прервана отказом')
 KINDS['user_data_finished']='Завершён пользовательский пакет'
 KINDS['pdu_state']='Состояние PDU-сессии'
+KINDS['cluster_state']='Кластер и состояние сессии'
 FIELDS=dict(node='Узел',source='Отправитель',target='Адресат',receiver='Получатель перехода',message_id='Сообщение',rpc_id='RPC',parent_rpc='Родительский RPC',
     operation='Операция',protocol='Протокол',role='Роль',reason='Причина',result='Результат',status='Статус',bytes='Размер, B',queue_depth='Глубина очереди',
     wait_ms='Ожидание, ms',service_ms='Обработка, ms',done_ms='Запланировано завершение, ms',deadline_ms='Срок таймера, ms',timer_id='Таймер',timer_type='Тип таймера',

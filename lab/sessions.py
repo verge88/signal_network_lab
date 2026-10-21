@@ -52,6 +52,10 @@ class SessionLifecycle:
             self.suppress+=1
             try:self.store.pop(key,None)
             finally:self.suppress-=1
+        elif item is None and node in self.e.clusters.members:
+            record=self.records[owner]
+            if self.index.get((tuple(record['ue']),record['pdu_session_id']),owner)==owner:
+                self.e.clusters.capture('pdu_contexts',key,None,None,owner=owner)
 
     def activate(self,pr):
         record=self.records[pr['id']]
@@ -154,13 +158,18 @@ class SessionLifecycle:
     def delete_registration(self,pr,node):
         ue=self.ue(pr);self.suppress+=1
         try:
-            for key in list(self.e.contexts.orders.get(node,{})):
-                if (key[1],key[2],key[3])==ue:self.e.contexts.pop(key,None)
+            keys={key for key in self.e.contexts.orders.get(node,{}) if (key[1],key[2],key[3])==ue}
+            keys.add(self.e.context_key(pr,node))
+            for owner,record in self.records.items():
+                if tuple(record['ue'])==ue:keys.add(self.e.context_key(self.e.procedures[owner],node))
+            for key in keys:
+                if key in self.e.contexts.data:self.e.contexts.pop(key,None)
+                elif node in self.e.clusters.members:self.e.clusters.capture('fiveg_contexts',key,None,None)
         finally:self.suppress-=1
-    def deregister_complete(self,pr):
+    def deregister_complete(self,pr,node=None):
         if pr.get('deregistration_completed'):return
         pr['deregistration_completed']=True
-        self.delete_registration(pr,pr['flow'].target);self.deregistering.discard(self.ue(pr))
+        self.delete_registration(pr,node or pr['flow'].target);self.deregistering.discard(self.ue(pr))
         for owner,record in self.records.items():
             if tuple(record['ue'])==self.ue(pr):self.complete_release(owner)
         self.stats['deregistered']+=1
@@ -191,6 +200,7 @@ class SessionLifecycle:
 
     def context_removed(self,store,key,value,reason):
         if self.suppress:return
+        if reason=='restart_cleared' and self.e.clusters.recoverable(store,key,value):return
         if getattr(self.e,'reporting',False):
             record=self.records.get(value.get('owner')) if store=='pdu_contexts' else None
             if record and record['state']!='RELEASED':self.emit(record,'ORPHANED',reason+'_after_observation')
