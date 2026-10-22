@@ -30,6 +30,17 @@ def migrate_workspace(source):
     if source==DATA.resolve() or (DATA/'lab.sqlite3').exists() or not (source/'lab.sqlite3').is_file():
         return False
     DATA.mkdir(exist_ok=True,parents=True)
+    # Copy durable jobs before the run library: every completed job then refers
+    # to a result that was already committed when the library backup is taken.
+    durable=source/'long-runs'
+    if durable.is_dir():
+        destination=DATA/'long-runs';destination.mkdir(exist_ok=True)
+        for path in durable.glob('*.sqlite'):
+            target=destination/path.name
+            if target.exists():continue
+            old_job=sqlite3.connect(path.as_uri()+'?mode=ro',uri=True);new_job=sqlite3.connect(target)
+            try:old_job.backup(new_job)
+            finally:old_job.close();new_job.close()
     old=sqlite3.connect(source/'lab.sqlite3')
     new=sqlite3.connect(DATA/'lab.sqlite3')
     try:old.backup(new)

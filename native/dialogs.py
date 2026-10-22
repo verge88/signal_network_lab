@@ -95,7 +95,7 @@ def link_editor(parent,project,link=None):
     d.tab('Управляющий обмен')
     d.numeric(l,[('heartbeat_ms','Интервал heartbeat / watchdog',50,60000,1,'ms'),('control_timeout_ms','Таймер управляющего запроса',10,30000,1,'ms'),('control_retries','Повторы управляющего запроса',0,4,0,''),('reconnect_ms','Пауза восстановления ассоциации',10,30000,1,'ms'),('control_bytes','Размер управляющего сообщения',32,9000,0,'B')])
     d.field('peer_routing_context','M3UA: routing context пира (пусто = тот же)',QLineEdit('' if l['peer_routing_context'] is None else str(l['peer_routing_context'])))
-    d.field('shutdown_at_s','Штатное закрытие (-1 = не закрывать)',spin(-1 if l['shutdown_at_s'] is None else l['shutdown_at_s'],-1,599,2,'s'))
+    d.field('shutdown_at_s','Штатное закрытие (-1 = не закрывать)',spin(-1 if l['shutdown_at_s'] is None else l['shutdown_at_s'],-1,86399.99,2,'s'))
     return d
 
 
@@ -112,7 +112,7 @@ def flow_editor(parent,project,flow=None):
     d.numeric(f,[('response_bytes','Размер ответа',32,65536,0,'B'),('max_retries','Повторы процедуры',0,4,0,''),('retry_backoff_ms','Пауза перед повтором',0,10000,1,'ms')])
     d.tab('Абоненты и нагрузка')
     d.field('traffic_profile','Профиль',combo([('poisson','Пуассоновский'),('periodic','Периодическая активность'),('bursty','Короткие всплески')],f['traffic_profile']))
-    d.numeric(f,[('subscribers','Размер группы абонентов',1,1000000,0,''),('profile_period_s','Период активности',1,86400,1,'s'),('profile_amplitude','Амплитуда профиля',0,.95,2,''),('message_size_cv','CV размера сообщения',0,2,2,''),('priority','Приоритет (0 = высший)',0,2,0,'')])
+    d.numeric(f,[('subscribers','Размер группы абонентов',1,1000000,0,''),('profile_period_s','Период активности',1,86400,1,'s'),('profile_step_s','Шаг профиля нагрузки',.1,60,2,'s'),('profile_amplitude','Амплитуда профиля',0,.95,2,''),('message_size_cv','CV размера сообщения',0,2,2,''),('priority','Приоритет (0 = высший)',0,2,0,'')])
     d.tab('Маршрутизация')
     for key,title in [('destination_pc','Destination point code'),('global_title','SCCP Global Title'),('destination_realm','Destination realm'),('destination_host','Destination host')]:d.field(key,title,QLineEdit(f[key]))
     d.numeric(f,[('application_id','Diameter Application ID',0,2147483647,0,''),('routing_context','M3UA Routing Context',0,2147483647,0,'')])
@@ -158,7 +158,7 @@ def incident_editor(parent,project,incident=None):
         channel=kind in ('link_down','latency','loss','loss_absolute');d.fields['direction'].setEnabled(channel)
         if not channel:d.fields['direction'].setCurrentIndex(0)
     d.field('start','Начало',spin(e['start'],0,project['duration']-.01,2,'s'))
-    d.field('duration','Длительность',spin(e['duration'],.01,600,2,'s'))
+    d.field('duration','Длительность',spin(e['duration'],.01,86400,2,'s'))
     d.field('magnitude','Множитель',spin(e['magnitude'],0,100,2))
     d.field('direction','Направление канала',combo([('both','Оба'),('forward','Источник → назначение'),('reverse','Назначение → источник')],e.get('direction','both')))
     d.field('detection_ms','Обнаружение отказа',spin(e.get('detection_ms') if e.get('detection_ms') is not None else 300,0,30000,1,'ms'))

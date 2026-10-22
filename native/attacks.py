@@ -109,7 +109,7 @@ class AttackEditor(QDialog):
         root=QVBoxLayout(self);root.setContentsMargins(20,16,20,16);root.setSpacing(10)
         form=QFormLayout();form.setVerticalSpacing(9);self.name=QLineEdit(scenario['name']);self.name.setMaxLength(100);form.addRow('Название',self.name)
         timing=QHBoxLayout();timing.setSpacing(18);self.enabled=QCheckBox('Включена');self.enabled.setChecked(scenario['enabled']);timing.addWidget(self.enabled)
-        self.start=spin(scenario['start'],0,599,2,'с');self.repeats=spin(scenario['repeats'],1,10);self.interval=spin(scenario['interval'],.1,600,2,'с')
+        self.start=spin(scenario['start'],0,86399.99,2,'с');self.repeats=spin(scenario['repeats'],1,10);self.interval=spin(scenario['interval'],.1,86400,2,'с')
         for title,w in [('Начало',self.start),('Повторов',self.repeats),('Интервал начал',self.interval)]:
             group=QWidget();group_layout=QHBoxLayout(group);group_layout.setContentsMargins(0,0,0,0);group_layout.setSpacing(7);group_layout.addWidget(label(title));w.setMaximumWidth(125 if w is not self.repeats else 60);group_layout.addWidget(w);timing.addWidget(group)
         timing.addStretch();form.addRow(timing);root.addLayout(form)

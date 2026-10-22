@@ -161,6 +161,7 @@ class SmokeTest(QObject):
             for f in p.flows:f.rate=2
             data=research.dataset(p,12,feature_set='combined-v1',topology_variants=True)
             assert data['metadata']['topologies']==3 and len(SETS)==5
+            assert sorted(event['kind'] for run in data['provenance'] for event in run['project']['incidents'])==['latency','latency','node_down','node_down','surge','surge']
             imported=research.import_csv(research.csv_text(data['rows']),'Rich telemetry self-test')
             w.dataset_record=imported
             for mode in ('topology','fault'):
@@ -527,6 +528,36 @@ class SmokeTest(QObject):
         d.close();w.apply_theme(theme,persist=False)
         self.completed.append('experiment constructor: background repeats, exact warmup, paired seeds, native multidimensional/capacity controls, saved-series reopening, undo, interval charts and styled exports in five themes')
 
+    def verify_long_runs(self):
+        from lab import long_runs,checkpoints
+        from .export_dialog import ExportDialog
+        from .exporting import export_file
+        w=self.window;d=w.long_run_dialog;theme=w.theme;meta=long_runs.get(d.current_id)
+        assert meta['status']=='completed' and meta['records']>0
+        self.assert_long_physics=checkpoints.engine_for(self.long_source).run()
+        actual=storage.get('run',meta['result_id'])
+        assert actual['summary']==self.assert_long_physics['summary'] and actual['windows']==self.assert_long_physics['windows']
+        assert meta['compaction']['messages']>0 and d.jobs_table.rowCount()>0
+        d.load_stream();assert d.stream_table.rowCount()>0
+        export=ExportDialog(d,[dict(key='long_stream',kind='table',widget=d.stream_table,title='Длительный прогон · записи')])
+        if self.output:
+            count=long_runs.export_stream(meta['id'],self.output/'long-run-events.jsonl')
+            assert count==meta['records'] and long_runs.export_stream(meta['id'],self.output/'long-run-events.csv','csv')==count
+            for fmt in ('json','xlsx','pdf'):export_file(self.output/('long-run-visible.'+fmt),export.data(),export.style(),fmt)
+        export.close();export.deleteLater()
+        for name in ('monochrome','light_monochrome','dark','graphite','porcelain'):
+            w.apply_theme(name,persist=False)
+            for tab,title in [(1,'jobs'),(2,'stream')]:
+                d.tabs.setCurrentIndex(tab);self.app.processEvents()
+                if self.output:d.grab().save(str(self.output/f'{name}-long-run-{title}.png'))
+        d.duration.setValue(86400);d.measurement_window.setValue(1);d.source['flows'][0]['rate']=100;d.load.setValue(1);d.fit_budget()
+        assert d.project().duration==86400 and d.measurement_window.value()>=9
+        d.tabs.setCurrentIndex(0);self.app.processEvents()
+        if self.output:d.grab().save(str(self.output/'long-run-plan.png'))
+        w.show_help('Длительные прогоны');assert 'Контрольная точка' in w.help_widget.reader.toPlainText()
+        d.close();w.run_record=self.long_previous;w.refresh_measurements();w.apply_theme(theme,persist=False)
+        self.completed.append('durable long runs: native background pause, close-request checkpoint, exact resume, stable final telemetry, streamed JSONL/CSV, styled table exports, daily budget controls and five themes')
+
     def verify_session_lifecycle(self):
         from lab.presets import preset
         from lab.schema import Incident
@@ -745,7 +776,26 @@ class SmokeTest(QObject):
                 w.show_experiments();d=w.experiment_dialog;d.source=config.model_dump();d.axes.setRowCount(0);d.add_axis('load',[.5,1]);d.repetitions.setValue(6);d.warmup.setValue(2)
                 self.stage=6;d.start();assert not d.run_button.isEnabled()
             elif self.stage==6:
-                self.verify_experiments();self.verify_clusters();self.verify_session_lifecycle();self.verify_themes();self.verify_exports();w.show_page(0);w.undo.setClean()
+                self.verify_experiments()
+                from lab.presets import preset
+                self.long_previous=w.run_record;self.long_source=preset('diameter');self.long_source.duration=10;self.long_source.window=1;self.long_source.flows[0].rate=2
+                w.show_long_runs();d=w.long_run_dialog;d.source=self.long_source.model_dump();d.duration.setValue(10);d.measurement_window.setValue(1);d.load.setValue(1);d.checkpoint_sim.setValue(1);d.batch.setValue(32);d.auto_pause.setChecked(True);d.pause_at.setValue(3)
+                self.stage=7;d.start_new()
+            elif self.stage==7:
+                from lab import long_runs
+                from PySide6.QtGui import QCloseEvent
+                d=w.long_run_dialog;assert long_runs.get(d.current_id)['status']=='paused';d.refresh()
+                self.long_close_requests=[];w.close=lambda:self.long_close_requests.append(True)
+                self.stage=8;d.resume_selected();event=QCloseEvent();w.closeEvent(event);assert not event.isAccepted()
+            elif self.stage==8:
+                from lab import long_runs
+                if not self.long_close_requests:QTimer.singleShot(25,self.advance);return
+                state=long_runs.get(w.long_run_dialog.current_id)['status'];assert state in ('paused','completed');del w.close
+                self.stage=9
+                if state=='paused':w.long_run_dialog.refresh();w.long_run_dialog.resume_selected()
+                else:QTimer.singleShot(25,self.advance)
+            elif self.stage==9:
+                self.verify_long_runs();self.verify_clusters();self.verify_session_lifecycle();self.verify_themes();self.verify_exports();w.show_page(0);w.undo.setClean()
                 w.mutate('Проверка закрытия с историей',lambda p:p['nodes'][0].update(capacity=p['nodes'][0]['capacity']+1))
                 assert not w.undo.isClean()
                 self.completed.append('shutdown regression: destroy the actual main window with dirty undo history and reject exceptions raised during final cleanup')

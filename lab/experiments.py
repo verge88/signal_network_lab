@@ -55,7 +55,7 @@ class Options(BaseModel):
     adaptive: bool = False
     min_repetitions: int = Field(default=10, ge=3, le=1000)
     batch: int = Field(default=5, ge=1, le=100)
-    warmup_s: float = Field(default=0, ge=0, lt=600)
+    warmup_s: float = Field(default=0, ge=0, lt=86400)
     confidence: float = Field(default=.95, ge=.8, le=.999)
     precision_metric: Literal['latency_p95', 'delivery_ratio', 'throughput'] = 'latency_p95'
     absolute_tolerance: float = Field(default=5, ge=0, le=100000)

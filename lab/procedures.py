@@ -12,7 +12,7 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import CancelledError
 import numpy as np
 
-ENGINE_VERSION = '2.9.0'
+ENGINE_VERSION = '2.10.0'
 CONTRACT = 'procedures-v2'
 ANSWERS = {'MAP UpdateLocation': 'MAP UpdateLocationResult',
            'MAP SendAuthenticationInfo': 'MAP AuthenticationInfoResult',
@@ -83,6 +83,7 @@ class ProcedureSimulation:
         self.telemetry=Telemetry(self)
         from .clusters import StateClusters
         self.clusters=StateClusters(self)
+        self.prepared=False
 
     def check(self, value=None):
         if self.cancel and self.cancel():
@@ -296,9 +297,10 @@ class ProcedureSimulation:
             boundaries.update(max(0., min(float(self.p.duration), t)) for e in self.p.incidents if e.kind=='surge' and e.target==f.id for t in (e.start, e.start+e.duration))
             # Periodic intensity is sampled in 100 ms bins; incident boundaries remain exact.
             if f.traffic_profile != 'poisson' or f.profile_amplitude:
-                boundaries.update(np.arange(0, self.p.duration, .1).tolist())
+                boundaries.update(np.arange(0, self.p.duration, f.profile_step_s).tolist())
             times = sorted(boundaries)
-            for lo, hi in zip(times, times[1:]):
+            for index,(lo, hi) in enumerate(zip(times, times[1:])):
+                if index%1024==0:self.check()
                 mid = (lo+hi)/2
                 factor = max((e.magnitude for e in self.p.incidents if e.kind=='surge' and e.target==f.id and e.start<=mid<e.start+e.duration), default=1)
                 wave = 1+f.profile_amplitude*math.sin(2*math.pi*mid/f.profile_period_s)
@@ -734,6 +736,8 @@ class ProcedureSimulation:
         else: self.finish(pr,'timeout')
 
     def reservoir(self, target, record, seen):
+        sink=getattr(self,'stream_sink',None)
+        if sink:sink(target,record,seen)
         if len(target)<self.p.trace_limit: target.append(record)
         else:
             index = int(self.sample_rng.integers(max(seen,len(target)+1)))
@@ -758,9 +762,16 @@ class ProcedureSimulation:
                 if stat['target'] in pr['objects'] and self.t>=stat['end']*1000 and stat['first_success_after_end'] is None: stat['first_success_after_end']=self.t/1000-stat['end']
         self.reservoir(self.traces,dict(time=round(pr['start']/1000,6),end=round(self.t/1000,6),source=pr['flow'].source,target=pr['destination'],operation=pr['flow'].operation,protocol=pr['flow'].protocol,status=status,latency_ms=round(elapsed,6),route=pr['routes'][-1] if pr['routes'] else [],routes=pr['routes'],procedure_id=pr['id'],session_id=pr['session'],subscriber_id=pr['subscriber'],steps_completed=pr['step']+int(status=='delivered'),attempts=pr['attempts'],retries=pr['retries'],transport_retries=pr['transport_retries'],cause=pr['last_cause'] if status!='delivered' else None,affected_incidents=sorted(pr['affected'])),self.finished)
 
-    def run(self):
-        self.prepare()
+    def run(self, event_hook=None):
+        if getattr(self,'reporting',False):raise ValueError('Этот расчёт уже завершён')
+        if event_hook is None and self.p.duration>600:
+            # Dataset and sweep runs also need bounded transport history, even
+            # when they are not durable jobs with a journal of their own.
+            from .long_runs import compact
+            event_hook=lambda engine:compact(engine) if engine.steps%512==0 else None
+        if not self.prepared:self.prepare();self.prepared=True
         while self.events:
+            if event_hook:event_hook(self)
             self.steps += 1
             if self.steps%2048==0: self.check(min(99,int(100*self.finished/max(1,self.total))))
             self.t, _, _, kind, data = heapq.heappop(self.events)
@@ -787,7 +798,7 @@ class ProcedureSimulation:
             elif kind.startswith('session_'):self.session_lifecycle.event(kind,data)
             elif kind.startswith('cluster_'):self.clusters.event(kind,data)
             self.journal.actor=None
-            if self.steps>12000000: raise ValueError('Превышен лимит 12 млн событий; уменьшите нагрузку, размеры или число повторов')
+            if self.steps>getattr(self,'event_limit',12000000): raise ValueError('Превышен лимит событий; уменьшите нагрузку, размеры или число повторов')
         self.reporting=True
         result=self.report();result['control_plane']=self.control.report()
         result['resources']=self.storage.report()

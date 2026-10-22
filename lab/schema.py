@@ -1,4 +1,5 @@
 from typing import Literal
+import math
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 NODE_KINDS=['MSC','STP','SG','HLR','MME','DRA','HSS','SCP','gNB','AMF','SMF','UPF','AUSF','UDM','UDR','PCF','NRF','NSSF','SCP5G','DN']
@@ -24,7 +25,7 @@ class UpfRule(BaseModel):
 
 class MobilityEvent(BaseModel):
     model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
-    time: float=Field(ge=0,le=599)
+    time: float=Field(ge=0,lt=86400)
     gnb: str=Field(min_length=1,max_length=50)
     amf: str=Field(default='',max_length=50)
     upf: str=Field(default='',max_length=50)
@@ -122,7 +123,7 @@ class Link(BaseModel):
     reconnect_ms: float = Field(default=500,ge=10,le=30000)
     control_bytes: int = Field(default=128,ge=32,le=9000)
     peer_routing_context: int | None=Field(default=None,ge=0,le=4294967295)
-    shutdown_at_s: float | None=Field(default=None,ge=0,le=599)
+    shutdown_at_s: float | None=Field(default=None,ge=0,lt=86400)
 
     @model_validator(mode='after')
     def rto_bounds(self):
@@ -147,6 +148,7 @@ class Flow(BaseModel):
     subscribers: int = Field(default=10000, ge=1, le=1000000)
     traffic_profile: Literal['poisson', 'periodic', 'bursty'] = 'poisson'
     profile_period_s: float = Field(default=60, ge=1, le=86400)
+    profile_step_s: float = Field(default=.1,ge=.1,le=60)
     profile_amplitude: float = Field(default=0, ge=0, le=.95)
     message_size_cv: float = Field(default=0, ge=0, le=2)
     priority: int = Field(default=1, ge=0, le=2)
@@ -197,8 +199,8 @@ class Flow(BaseModel):
 class Incident(BaseModel):
     kind: Literal['node_down', 'node_restart', 'link_down', 'surge', 'latency', 'loss', 'loss_absolute', 'node_capacity', 'node_delay', 'node_error']
     target: str
-    start: float = Field(default=20, ge=0, le=600)
-    duration: float = Field(default=20, gt=0, le=600)
+    start: float = Field(default=20, ge=0, lt=86400)
+    duration: float = Field(default=20, gt=0, le=86400)
     magnitude: float = Field(default=3, ge=0, le=100)
     direction: Literal['both', 'forward', 'reverse'] = 'both'
     detection_ms: float | None = Field(default=None, ge=0, le=30000)
@@ -249,9 +251,9 @@ class AttackScenario(BaseModel):
     name: str = Field(default='Собственный сценарий', min_length=1, max_length=100)
     description: str = Field(default='', max_length=2000)
     enabled: bool = True
-    start: float = Field(default=10, ge=0, le=599)
+    start: float = Field(default=10, ge=0, lt=86400)
     repeats: int = Field(default=1, ge=1, le=10)
-    interval: float = Field(default=20, ge=.1, le=600)
+    interval: float = Field(default=20, ge=.1, le=86400)
     steps: list[AttackStep] = Field(min_length=1, max_length=20)
 
     @model_validator(mode='after')
@@ -288,9 +290,9 @@ class Project(BaseModel):
     incidents: list[Incident] = Field(default_factory=list, max_length=30)
     attacks: list[AttackScenario] = Field(default_factory=list, max_length=20)
     clusters: list[StateCluster]=Field(default_factory=list,max_length=10)
-    duration: int = Field(default=60, ge=10, le=600)
+    duration: int = Field(default=60, ge=10, le=86400)
     seed: int = Field(default=42, ge=0, le=2147483647)
-    window: int = Field(default=5, ge=1, le=30)
+    window: int = Field(default=5, ge=1, le=3600)
     engine: Literal['procedures', 'messages'] = 'procedures'
     routing_mode: Literal['shortest', 'loadshare'] = 'shortest'
     trace_limit: int = Field(default=1500, ge=100, le=20000)
@@ -305,6 +307,9 @@ class Project(BaseModel):
 
     @model_validator(mode='after')
     def consistent(self):
+        if self.duration>600 and self.engine!='procedures':raise ValueError('Длительные прогоны требуют движок процедур')
+        if math.ceil(self.duration/self.window)>10000:raise ValueError('Лимит 10 000 окон: увеличьте окно измерений')
+        if sum(math.ceil(self.duration/f.profile_step_s) for f in self.flows if f.traffic_profile!='poisson' or f.profile_amplitude)>2_000_000:raise ValueError('Лимит 2 млн интервалов профиля: увеличьте шаг профиля нагрузки')
         ids = {n.id for n in self.nodes}
         if len(ids) != len(self.nodes):
             raise ValueError('Идентификаторы узлов должны быть уникальными')

@@ -168,6 +168,7 @@ class MainWindow(QMainWindow):
         self.menu_action(research_menu,'Жизненный цикл 5G-сессий…',self.show_session_lifecycle)
         self.menu_action(research_menu,'Кластеры и репликация…',self.show_clusters)
         self.menu_action(research_menu,'Конструктор серий…',self.show_experiments)
+        self.menu_action(research_menu,'Длительные прогоны…',self.show_long_runs)
         self.help_action=self.menu_action(help_menu,'Руководство пользователя',self.show_help,'F1')
         self.menu_action(templates,'5G · мобильность и QoS',lambda:self.new_project('5g-mobile'))
         self.menu_action(templates,'5G · репликация и резерв',lambda:self.new_project('5g-ha'))
@@ -190,6 +191,11 @@ class MainWindow(QMainWindow):
             from .session_dialog import SessionDialog
             self.session_dialog=SessionDialog(self)
         self.session_dialog.set_run(self.run_record);self.session_dialog.show();self.session_dialog.raise_();self.session_dialog.activateWindow()
+    def show_long_runs(self):
+        if not getattr(self,'long_run_dialog',None):
+            from .long_run_dialog import LongRunDialog
+            self.long_run_dialog=LongRunDialog(self)
+        self.long_run_dialog.refresh();self.long_run_dialog.show();self.long_run_dialog.raise_();self.long_run_dialog.activateWindow()
     def show_experiments(self,record=None):
         if not getattr(self,'experiment_dialog',None):
             from .experiment_dialog import ExperimentDialog
@@ -357,7 +363,7 @@ class MainWindow(QMainWindow):
                 field.addWidget(caption);field.addWidget(control,1);layout.addLayout(field,1)
             return layout
         config,cc,ch=panel('Параметры эксперимента');form=QHBoxLayout();form.setSpacing(15)
-        self.project_name=QLineEdit();self.project_name.setMaxLength(100);self.duration=spin(60,10,600,0,'s');self.seed=spin(42,0,2147483647);self.window_size=spin(5,1,30,0,'s')
+        self.project_name=QLineEdit();self.project_name.setMaxLength(100);self.duration=spin(60,10,86400,0,'s');self.seed=spin(42,0,2147483647);self.window_size=spin(5,1,3600,0,'s')
         for title,w in [('Название проекта',self.project_name),('Длительность',self.duration),('Seed',self.seed),('Окно признаков',self.window_size)]:
             v=QVBoxLayout();v.setSpacing(6);caption=label(title,'Muted');caption.setBuddy(w);v.addWidget(caption);v.addWidget(w);form.addLayout(v,2 if w is self.project_name else 1)
         cc.addLayout(form);ch.addWidget(self.action_button('Применить',self.apply_experiment,'settings'));l.addWidget(config)
@@ -379,6 +385,7 @@ class MainWindow(QMainWindow):
         self.incidents_table=table(['Событие','Объект','Начало, s','Длительность, s','Множитель']);self.incidents_table.setMinimumHeight(145);self.incidents_table.setMaximumHeight(230);self.incidents_table.doubleClicked.connect(lambda idx:self.call(self.edit_incident,True));ic.addWidget(self.incidents_table);l.addWidget(incidents)
         sweep,sc,sh=panel('Параметрическое исследование','Независимые повторения с сопоставленными seed. Конструктор добавляет прогрев, несколько параметров, контроль точности и поиск допустимой нагрузки.')
         sh.addWidget(self.action_button('Конструктор серий…',self.show_experiments,'settings'))
+        sh.addWidget(self.action_button('Длительные прогоны…',self.show_long_runs,'history'))
         self.sweep_values=QLineEdit('0.5, 1, 1.5, 2');self.sweep_repeats=spin(10,1,1000);sc.addLayout(row(label('Множители нагрузки','Muted'),self.sweep_values,label('Повторов','Muted'),self.sweep_repeats,self.action_button('Запустить серию',self.start_sweep,'experiment',True,True)))
         self.sweep_table=table(['Нагрузка','Повторов','p95 ± CI, ms','Доставка','Throughput']);self.sweep_table.setMinimumHeight(150);self.sweep_table.hide();sc.addWidget(self.sweep_table);l.addWidget(sweep);l.addStretch()
         calibration,ca,cah=panel('Калибровка по измерениям','CSV независимых опытов: run_id, offered_rate и измеренные метрики. Подбор на train; отчёт на отложенных run_id.')
@@ -654,9 +661,9 @@ class MainWindow(QMainWindow):
         if idx<0:raise ValueError('Выберите событие')
         self.mutate('Удалить событие',lambda p:p['incidents'].pop(idx))
 
-    def start_job(self,title,fn,done):
+    def start_job(self,title,fn,done,result_on_cancel=False):
         if self.active_job:raise ValueError('Дождитесь завершения текущего вычисления или отмените его')
-        job=Job(fn);self.active_job=job;self.started=time.monotonic();self.progress.setRange(0,100);self.progress.setValue(0);self.job_label.setText(title);self.job_bar.show();self.cancel_button.setEnabled(True)
+        job=Job(fn,result_on_cancel);self.active_job=job;self.started=time.monotonic();self.progress.setRange(0,100);self.progress.setValue(0);self.job_label.setText(title);self.job_bar.show();self.cancel_button.setEnabled(True)
         for b in self.compute_buttons:b.setEnabled(False)
         job.signals.progress.connect(self.progress.setValue)
         job.signals.result.connect(lambda r:self.call(done,r));job.signals.result.connect(self.job_completed)
@@ -670,7 +677,12 @@ class MainWindow(QMainWindow):
         self.active_job=None;self.job_bar.hide()
         for b in self.compute_buttons:b.setEnabled(True)
         self.call(self.refresh_library);self.call(self.refresh_results)
+        if getattr(self,'close_after_long_job',False):
+            self.close_after_long_job=False
+            if getattr(self,'long_close_ready',False):QTimer.singleShot(0,self.close)
     def start_run(self):
+        if self.project['duration']>600:
+            self.show_long_runs();self.long_run_dialog.load_project();self.long_run_dialog.start_new();return
         p=copy.deepcopy(self.project)
         def done(r):self.run_record=r;self.refresh_measurements();self.statusBar().showMessage(f'Прогон завершён: {r["summary"]["sent"]:,} сообщений · p95 {r["summary"]["latency_p95"]:.1f} ms',12000)
         self.start_job('Расчёт дискретных событий',lambda progress,cancel:research.run(p,progress,cancel),done)
@@ -915,9 +927,13 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.15.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.16.1','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
+            dialog=getattr(self,'long_run_dialog',None)
+            if dialog and dialog.owns_job:
+                self.close_after_long_job=True;self.long_close_ready=False;self.cancel_job()
+                self.statusBar().showMessage('Сохраняю контрольную точку перед закрытием…');event.ignore();return
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return
         if not self.may_replace():event.ignore();return
         if self.topology_expanded:self.set_topology_expanded(False)

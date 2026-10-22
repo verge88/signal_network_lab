@@ -48,7 +48,7 @@ class ListDialog(QDialog):
             choices=[(n['id'],n['name']) for n in self.project['nodes'] if n['kind']=='gNB']
             if not choices:self.error.setText('Добавьте gNB в проект');return
             r=MobilityEvent.model_validate(self.items[i] if existing else dict(time=5,gnb=choices[0][0])).model_dump();d=Editor('Перемещение группы UE',self)
-            d.field('time','Начало',spin(r['time'],0,599,2,'с'))
+            d.field('time','Начало',spin(r['time'],0,86399.99,2,'с'))
             for key,kind,title in [('gnb','gNB','Новый gNB'),('amf','AMF','Новый AMF'),('upf','UPF','Новый UPF')]:
                 values=[(n['id'],n['name']) for n in self.project['nodes'] if n['kind']==kind]
                 if key!='gnb':values=[('','Сохранить текущий')]+values

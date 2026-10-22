@@ -64,7 +64,9 @@ def dataset(project, runs=12, name='Signaling telemetry', progress=None, cancel=
                 flow=d['flows'][i%len(d['flows'])]
                 from .procedures import ProcedureSimulation
                 probe=ProcedureSimulation(checked(d));probe_flow=next(f for f in probe.p.flows if f.id==flow['id'])
-                path=probe.route(probe_flow.source,probe.destination(probe_flow),probe_flow)
+                # Plan incidents on the configured topology before runtime associations open.
+                path=(probe.route(probe_flow.source,probe.destination(probe_flow),probe_flow,ignore_faults=True)
+                      if probe.nodes[probe_flow.source].enabled else None)
                 compatible=[l for _,lid in (path or []) for l in d['links'] if l['id']==lid]
                 kind=['surge','latency','node_down'][(((i-1)//2)+(i//6 if topology_variants else 0))%3]
                 if kind=='latency' and not compatible:kind='surge'

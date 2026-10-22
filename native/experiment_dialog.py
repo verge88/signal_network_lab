@@ -40,7 +40,7 @@ class ExperimentDialog(QDialog):
         self.p95_limit=spin(200,.01,100000,2,'ms');self.success_min=spin(90,.01,100,2,'%');form.addRow('Требования · p95 ≤ / успешность ≥',self.inline(self.p95_limit,self.success_min))
         self.capacity_controls=limits;layout.addWidget(limits)
         form=QFormLayout();form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        self.warmup=spin(0,0,599.99,2,'s');self.repetitions=spin(10,1,1000);self.confidence=spin(95,80,99.9,1,'%')
+        self.warmup=spin(0,0,86399.99,2,'s');self.repetitions=spin(10,1,1000);self.confidence=spin(95,80,99.9,1,'%')
         form.addRow('Прогрев / максимум повторений / доверие',self.inline(self.warmup,self.repetitions,self.confidence))
         self.adaptive=QCheckBox('Остановить точку при достижении точности');form.addRow(self.adaptive)
         self.minimum=spin(10,3,1000);self.batch=spin(5,1,100);form.addRow('Минимум повторений / шаг проверки',self.inline(self.minimum,self.batch))
