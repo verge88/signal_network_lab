@@ -12,7 +12,7 @@ from collections import Counter, defaultdict, deque
 from concurrent.futures import CancelledError
 import numpy as np
 
-ENGINE_VERSION = '2.10.0'
+ENGINE_VERSION = '2.11.0'
 CONTRACT = 'procedures-v2'
 ANSWERS = {'MAP UpdateLocation': 'MAP UpdateLocationResult',
            'MAP SendAuthenticationInfo': 'MAP AuthenticationInfoResult',
@@ -84,6 +84,8 @@ class ProcedureSimulation:
         from .clusters import StateClusters
         self.clusters=StateClusters(self)
         self.prepared=False
+        from .monitoring import MonitoringOverlay
+        self.monitoring=MonitoringOverlay(self)
 
     def check(self, value=None):
         if self.cancel and self.cancel():
@@ -261,6 +263,7 @@ class ProcedureSimulation:
         self.check(0)
         self.control.prepare()
         self.clusters.prepare()
+        self.monitoring.prepare()
         for lid, l in self.links.items():
             if l.startup_ms and not self.p.control_plane:
                 handshake={'Diameter':'CER / CEA','M3UA':'ASPUP / ASPUP_ACK','NGAP':'SCTP_SETUP','SBI':'HTTP2_SETUP','PFCP':'ASSOCIATION_SETUP','SS7':'LINK_ALIGNMENT'}
@@ -461,10 +464,11 @@ class ProcedureSimulation:
     def complete_node(self,n,msg,arrival):
         if not self.usable(msg) or not self.node_up(n,self.t):return
         stat = self.node_stats[n]; stat['processed'] += 1; stat['latency'].append(self.t-arrival)
+        self.monitoring.observe(n,msg,arrival)
         if msg.get('gtt_pending'):
             self.advance_gt(msg,n)
             if not self.usable(msg):return
-        elif self.p.routing_knowledge=='distributed' and msg.get('category')!='control' and n!=msg['target']:
+        elif self.p.routing_knowledge=='distributed' and msg.get('category') not in ('control','monitoring') and n!=msg['target']:
             if msg['hop']>=max(8,2*len(self.nodes)):
                 del msg['path'][msg['hop']:];del msg['route_record'][msg['hop']+1:]
                 self.fail_message(msg,'routing_loop');return
@@ -548,6 +552,7 @@ class ProcedureSimulation:
         tx_start=max(self.t,self.wire[key]);tx = tx_start+size*8/(l.bandwidth_mbps*1000)
         self.wire[key] = tx; queue.append((tx,size))
         s['bytes'] += size; ds['bytes'] += size
+        if message is not None and message.get('category')=='monitoring':self.monitoring.link_bytes[lid]+=size
         loss = l.reverse_loss if direction=='reverse' and l.reverse_loss is not None else l.loss
         factor = max((e.magnitude for e in self.p.incidents if self.incident_matches(e, ('loss',), lid, tx, direction)),default=1)
         loss = max([min(1.,loss*factor)]+[e.magnitude for e in self.p.incidents if self.incident_matches(e,('loss_absolute',),lid,tx,direction)])
@@ -682,6 +687,7 @@ class ProcedureSimulation:
         self.packet_send(packet,lid,src)
 
     def app_arrival(self, msg):
+        if msg.get('category')=='monitoring':self.monitoring.arrival(msg);return
         if msg.get('category')=='replication':self.clusters.arrival(msg);return
         event=self.journal.message(msg,'message_arrived',node=msg['target'],result=msg['result'],elapsed_ms=self.t-msg['start'])
         if event:self.procedures[msg['procedure']]['_journal_event']=event
@@ -792,6 +798,7 @@ class ProcedureSimulation:
             elif kind=='snapshot': self.buckets[data]['outstanding']=self.outstanding
             elif kind.startswith('rpc_'):self.rpc_event(kind,data)
             elif kind.startswith('ctrl_'):self.control.event(kind,data)
+            elif kind.startswith('monitor_'):self.monitoring.event(kind,data)
             elif kind.startswith('user_'):self.user_plane.event(kind,data)
             elif kind.startswith('resource_'):self.storage.event(kind,data)
             elif kind.startswith('mobility_'):self.mobility.event(kind,data)
@@ -803,6 +810,7 @@ class ProcedureSimulation:
         result=self.report();result['control_plane']=self.control.report()
         result['resources']=self.storage.report()
         result['clusters']=self.clusters.report()
+        result['monitoring']=self.monitoring.report()
         result['config_sha256']=hashlib.sha256(json.dumps(self.original_project.model_dump(),sort_keys=True).encode()).hexdigest()
         result['attacks']=self.report_attacks()
         for i,origin in self.attack_origins.items():result['incidents'][i].update(origin)

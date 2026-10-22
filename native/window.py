@@ -169,6 +169,7 @@ class MainWindow(QMainWindow):
         self.menu_action(research_menu,'Кластеры и репликация…',self.show_clusters)
         self.menu_action(research_menu,'Конструктор серий…',self.show_experiments)
         self.menu_action(research_menu,'Длительные прогоны…',self.show_long_runs)
+        self.menu_action(research_menu,'Распределённый мониторинг…',self.show_monitoring)
         self.help_action=self.menu_action(help_menu,'Руководство пользователя',self.show_help,'F1')
         self.menu_action(templates,'5G · мобильность и QoS',lambda:self.new_project('5g-mobile'))
         self.menu_action(templates,'5G · репликация и резерв',lambda:self.new_project('5g-ha'))
@@ -180,6 +181,11 @@ class MainWindow(QMainWindow):
         dialog=PaletteDialog(self,self.theme,self.apply_theme)
         try:dialog.exec()
         finally:dialog.deleteLater()
+    def show_monitoring(self):
+        if not getattr(self,'monitor_dialog',None):
+            from .monitor_dialog import MonitorDialog
+            self.monitor_dialog=MonitorDialog(self)
+        self.monitor_dialog.show();self.monitor_dialog.raise_();self.monitor_dialog.activateWindow()
     def show_validation(self):
         if not getattr(self,'validation_dialog',None):
             from .validation_dialog import ValidationDialog
@@ -927,7 +933,7 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.16.1','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.17.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             dialog=getattr(self,'long_run_dialog',None)

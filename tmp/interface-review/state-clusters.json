@@ -1,0 +1,286 @@
+{
+  "version": "async-state-v1",
+  "groups": [
+    {
+      "id": "ha-amf",
+      "name": "AMF · пара",
+      "members": [
+        "amf",
+        "amf-reserve"
+      ],
+      "policy": "availability",
+      "divergent_keys": 0,
+      "wire_requests": 151,
+      "wire_answers": 91,
+      "applied_updates": 5,
+      "lag_sum_ms": 16147.242901812671,
+      "lag_max_ms": 8047.388940912136,
+      "restart_state_loss": 1,
+      "unreplicated_entries_lost": 0,
+      "leader_changed": 2,
+      "session_rebound": 1
+    },
+    {
+      "id": "ha-smf",
+      "name": "SMF · пара",
+      "members": [
+        "smf",
+        "smf-reserve"
+      ],
+      "policy": "availability",
+      "divergent_keys": 0,
+      "wire_requests": 204,
+      "wire_answers": 204,
+      "applied_updates": 1,
+      "lag_sum_ms": 44.23274666666674,
+      "lag_max_ms": 44.23274666666674
+    },
+    {
+      "id": "ha-udr",
+      "name": "UDR · пара",
+      "members": [
+        "udr",
+        "udr-reserve"
+      ],
+      "policy": "availability",
+      "divergent_keys": 0,
+      "wire_requests": 204,
+      "wire_answers": 204,
+      "repository_read": 4,
+      "applied_updates": 1,
+      "lag_sum_ms": 46.07551999999998,
+      "lag_max_ms": 46.07551999999998
+    }
+  ],
+  "views": [
+    {
+      "cluster_id": "ha-amf",
+      "node": "amf",
+      "role": "FOLLOWER",
+      "leader": "amf-reserve",
+      "term": 0,
+      "live": [
+        "amf",
+        "amf-reserve"
+      ],
+      "entries": 2,
+      "peers": {
+        "amf-reserve": {
+          "time": 9907.228106666664,
+          "term": 1,
+          "leader": "amf-reserve",
+          "epoch": 0
+        }
+      },
+      "observed_ms": 10000
+    },
+    {
+      "cluster_id": "ha-amf",
+      "node": "amf-reserve",
+      "role": "LEADER",
+      "leader": "amf-reserve",
+      "term": 1,
+      "live": [
+        "amf",
+        "amf-reserve"
+      ],
+      "entries": 2,
+      "peers": {
+        "amf": {
+          "time": 9907.561439999998,
+          "term": 0,
+          "leader": "amf-reserve",
+          "epoch": 1
+        }
+      },
+      "observed_ms": 10000
+    },
+    {
+      "cluster_id": "ha-smf",
+      "node": "smf",
+      "role": "LEADER",
+      "leader": "smf",
+      "term": 0,
+      "live": [
+        "smf",
+        "smf-reserve"
+      ],
+      "entries": 1,
+      "peers": {
+        "smf-reserve": {
+          "time": 9907.894773333332,
+          "term": 0,
+          "leader": "smf",
+          "epoch": 0
+        }
+      },
+      "observed_ms": 10000
+    },
+    {
+      "cluster_id": "ha-smf",
+      "node": "smf-reserve",
+      "role": "FOLLOWER",
+      "leader": "smf",
+      "term": 0,
+      "live": [
+        "smf",
+        "smf-reserve"
+      ],
+      "entries": 1,
+      "peers": {
+        "smf": {
+          "time": 9908.228106666666,
+          "term": 0,
+          "leader": "smf",
+          "epoch": 0
+        }
+      },
+      "observed_ms": 10000
+    },
+    {
+      "cluster_id": "ha-udr",
+      "node": "udr",
+      "role": "LEADER",
+      "leader": "udr",
+      "term": 0,
+      "live": [
+        "udr",
+        "udr-reserve"
+      ],
+      "entries": 1,
+      "peers": {
+        "udr-reserve": {
+          "time": 9908.56144,
+          "term": 0,
+          "leader": "udr",
+          "epoch": 0
+        }
+      },
+      "observed_ms": 10000
+    },
+    {
+      "cluster_id": "ha-udr",
+      "node": "udr-reserve",
+      "role": "FOLLOWER",
+      "leader": "udr",
+      "term": 0,
+      "live": [
+        "udr",
+        "udr-reserve"
+      ],
+      "entries": 1,
+      "peers": {
+        "udr": {
+          "time": 9908.894773333333,
+          "term": 0,
+          "leader": "udr",
+          "epoch": 0
+        }
+      },
+      "observed_ms": 10000
+    }
+  ],
+  "events": [
+    {
+      "time": 0.13701914666666665,
+      "cluster_id": "ha-udr",
+      "event": "repository_read",
+      "procedure_id": 1,
+      "node": "udr",
+      "read_version": null,
+      "required_version": null,
+      "result": "initial_profile"
+    },
+    {
+      "time": 0.19579517333333307,
+      "cluster_id": "ha-udr",
+      "event": "repository_read",
+      "procedure_id": 1,
+      "node": "udr",
+      "read_version": [
+        177.00103999999982,
+        1,
+        "udr"
+      ],
+      "required_version": [
+        177.00103999999982,
+        1,
+        "udr"
+      ],
+      "result": "local"
+    },
+    {
+      "time": 0.23440647999999956,
+      "cluster_id": "ha-udr",
+      "event": "repository_read",
+      "procedure_id": 1,
+      "node": "udr",
+      "read_version": [
+        177.00103999999982,
+        1,
+        "udr"
+      ],
+      "required_version": [
+        177.00103999999982,
+        1,
+        "udr"
+      ],
+      "result": "local"
+    },
+    {
+      "time": 0.2505339466666662,
+      "cluster_id": "ha-udr",
+      "event": "repository_read",
+      "procedure_id": 1,
+      "node": "udr",
+      "read_version": [
+        177.00103999999982,
+        1,
+        "udr"
+      ],
+      "required_version": [
+        177.00103999999982,
+        1,
+        "udr"
+      ],
+      "result": "local"
+    },
+    {
+      "time": 2.0,
+      "cluster_id": "ha-amf",
+      "event": "restart_state_loss",
+      "node": "amf",
+      "unreplicated_entries": 0
+    },
+    {
+      "time": 2.5,
+      "cluster_id": "ha-amf",
+      "event": "leader_changed",
+      "node": "amf-reserve",
+      "previous": "amf",
+      "leader": "amf-reserve",
+      "term": 1
+    },
+    {
+      "time": 2.5,
+      "cluster_id": "ha-amf",
+      "event": "session_rebound",
+      "procedure_id": 1,
+      "node": "amf-reserve",
+      "previous": "amf",
+      "pdu_session_id": 1
+    },
+    {
+      "time": 8.3,
+      "cluster_id": "ha-amf",
+      "event": "leader_changed",
+      "node": "amf",
+      "previous": "amf",
+      "leader": "amf-reserve",
+      "term": 0
+    }
+  ],
+  "event_count": 8,
+  "truncated": false,
+  "consistency": "asynchronous last-writer-wins; heartbeat views may be stale; no consensus or linearizability guarantee"
+}

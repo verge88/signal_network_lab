@@ -16,7 +16,7 @@ class SmokeTest(QObject):
         super().__init__(window);self.app=app;self.window=window;self.output=output;self.stage=0;self.errors=[];self.completed=[]
         if output:output.mkdir(parents=True,exist_ok=True)
         self.window.error=self.fail
-        self.timeout=QTimer(self);self.timeout.setSingleShot(True);self.timeout.timeout.connect(lambda:self.fail('Native self-test timed out'));self.timeout.start(180000)
+        self.timeout=QTimer(self);self.timeout.setSingleShot(True);self.timeout.timeout.connect(lambda:self.fail('Native self-test timed out'));self.timeout.start(240000)
     def fail(self,text):
         self.errors.append(str(text))
         if self.output:(self.output/'native-smoke.json').write_text(json.dumps(dict(status='failed',checks=self.completed,errors=self.errors),indent=2),encoding='utf-8')
@@ -133,6 +133,7 @@ class SmokeTest(QObject):
             self.verify_validation()
             self.verify_procedure_viewer()
             self.verify_expanded_ml()
+            self.verify_monitoring()
             self.verify_handbook()
             self.verify_attacks()
             self.verify_resource_services()
@@ -152,6 +153,47 @@ class SmokeTest(QObject):
             w.job_completed.connect(self.next_stage)
             w.start_run()
         except Exception:self.fail(traceback.format_exc())
+    def verify_monitoring(self):
+        from .monitor_dialog import MonitorDialog
+        from lab import monitor_study
+        from lab.presets import preset
+        from lab.schema import Project
+        from lab.monitoring import default_features
+        from .exporting import table_data,export_file,ExportStyle
+        w=self.window;theme=w.theme;dialog=MonitorDialog(w)
+        try:
+            p=preset('diameter').model_dump();p.update(duration=20,window=2,journal_sessions=0)
+            p['flows'][0]['rate']=1
+            p['monitoring']=dict(enabled=True,members=[dict(node='mme',collector='dra',witness='hss',zone='A')],features=default_features(),poll_s=2,decision_s=2,timeout_s=1,ttl_s=5,faults=[dict(node='mme',start=6,duration=8,mode='scale',factor=.1)])
+            p=Project.model_validate(p);dialog.source=p.model_dump();dialog.set_config(p.monitoring.model_dump())
+            assert dialog.config()==p.monitoring and dialog.tabs.count()==8
+            if self.output:
+                from unittest.mock import patch
+                invalid=p.monitoring.model_dump();invalid['members'][0]['collector']='missing-node'
+                profile=self.output/'invalid-monitoring-profile.json';profile.write_text(json.dumps(dict(contract='monitoring-profile-v1',monitoring=invalid)),encoding='utf-8')
+                with patch('native.monitor_dialog.QFileDialog.getOpenFileName',return_value=(str(profile),'JSON')):
+                    try:dialog.load_profile()
+                    except ValueError:pass
+                    else:raise AssertionError('Foreign node profile silently remapped')
+                assert dialog.config()==p.monitoring
+            data=monitor_study.generate(p,6);record=monitor_study.compare(data,('random_forest',),trees=20)
+            dialog.accept_dataset(data);dialog.accept_study(record)
+            assert dialog.results.rowCount()==4 and dialog.costs.rowCount()==6
+            dialog.results.selectRow(0);dialog.infer();assert dialog.observations.rowCount()==60
+            for name in ('monochrome','light_monochrome','dark','graphite','porcelain'):
+                w.apply_theme(name,persist=False);dialog.show()
+                for tab in (0,1,2,3,4,7):
+                    dialog.tabs.setCurrentIndex(tab);self.app.processEvents()
+                    if self.output:assert dialog.grab().save(str(self.output/f'{name}-monitoring-{tab}.png'))
+            if self.output:
+                (self.output/'monitoring-dataset.json').write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
+                export_file(self.output/'monitoring-comparison.html',table_data(dialog.results,'Мониторинг'),ExportStyle(),'html')
+            self.completed.append('generic monitoring: configurable collectors/zones/witnesses, real CPU/link traffic, numeric feature schema, paired group ablation, custom inference, saved history and eight native tabs in five themes')
+        finally:
+            for control in (dialog.data_button,dialog.compare_button):
+                if control in w.compute_buttons:w.compute_buttons.remove(control)
+            dialog.close();dialog.deleteLater();w.apply_theme(theme,persist=False)
+
     def verify_expanded_ml(self):
         from lab.presets import preset
         from lab.features import SETS

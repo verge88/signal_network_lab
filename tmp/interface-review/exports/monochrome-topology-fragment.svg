@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="304.8mm" height="186.267mm"
+ viewBox="0 0 1800 1100"
+ xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.2" baseProfile="tiny">
+<title>Топология · 5G SA / Service-Based Core</title>
+<desc>2 nodes / 1 links</desc>
+<defs>
+</defs>
+<g fill="none" stroke="black" stroke-width="1" fill-rule="evenodd" stroke-linecap="square" stroke-linejoin="bevel" >
+
+<g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Segoe UI" font-size="20.8333" font-weight="400" font-style="normal" 
+>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="21" font-weight="700" font-style="normal" 
+>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="21" font-weight="700" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="32" y="58.6875" font-family="Arial" font-size="21" font-weight="700" font-style="normal" 
+ >Топология · 5</text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="169.594" y="58.6875" font-family="Arial" font-size="21" font-weight="700" font-style="normal" 
+ >G SA / Service-Based Core</text>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="21" font-weight="700" font-style="normal" 
+>
+</g>
+
+<g fill="none" stroke="#466cb4" stroke-opacity="1" stroke-dasharray="8,4" stroke-dashoffset="0" stroke-width="2" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<polyline fill="none" vector-effect="none" points="32,93.2969 60,93.2969 " />
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="68" y="99.0938" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >GTPU</text>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,45.5665,181.672)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+</g>
+
+<g fill="none" stroke="#466cb4" stroke-opacity="1" stroke-dasharray="6.41361,3.2068" stroke-dashoffset="0" stroke-width="1.6034" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,45.5665,181.672)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<path vector-effect="none" fill-rule="evenodd" d="M190,330 C520,330 850,330 1180,330 "/>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,45.5665,181.672)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+</g>
+
+<g fill="#ffffff" fill-opacity="1" stroke="none" transform="matrix(1.24735,0,0,1.24735,45.5665,181.672)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<path vector-effect="none" fill-rule="evenodd" d="M648,322 C648,320.343 649.343,319 651,319 L719,319 C720.657,319 722,320.343 722,322 L722,338 C722,339.657 720.657,341 719,341 L651,341 C649.343,341 648,339.657 648,338 L648,322 Z "/>
+</g>
+
+<g fill="#ffffff" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,45.5665,181.672)"
+font-family="Arial" font-size="12" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="653.25" y="334.969" font-family="Arial" font-size="12" font-weight="400" font-style="normal" 
+ >GTPU · 3 ms</text>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#2457a7" stroke-opacity="1" stroke-width="1.20255" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,58.04,534.048)"
+font-family="Arial" font-size="12" font-weight="400" font-style="normal" 
+>
+<path vector-effect="none" fill-rule="evenodd" d="M0,8 C0,3.58172 3.58172,0 8,0 L172,0 C176.418,0 180,3.58172 180,8 L180,87 C180,91.4183 176.418,95 172,95 L8,95 C3.58172,95 0,91.4183 0,87 L0,8 Z "/>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,58.04,534.048)"
+font-family="Arial" font-size="14" font-weight="700" font-style="normal" 
+>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" transform="matrix(1.24735,0,0,1.24735,70.5135,546.521)"
+font-family="Arial" font-size="14" font-weight="700" font-style="normal" 
+>
+<path vector-effect="none" fill-rule="evenodd" d="M12,9 L12,21 "/>
+<path vector-effect="none" fill-rule="evenodd" d="M8,21 L12,13 L16,21 "/>
+<path vector-effect="none" fill-rule="evenodd" d="M8,21 L16,21 "/>
+<circle cx="12" cy="7.5" r="1.5"/>
+<path vector-effect="none" fill-rule="evenodd" d="M6.26549,3.98456 C5.46804,5.1213 5,6.50599 5,8 C5,9.49407 5.46808,10.8788 6.2656,12.0156 "/>
+<path vector-effect="none" fill-rule="evenodd" d="M17.7345,12.0154 C18.532,10.8787 19,9.49401 19,8 C19,6.50593 18.5319,5.12118 17.7344,3.9844 "/>
+<path vector-effect="none" fill-rule="evenodd" d="M2.98863,1.69002 C1.73549,3.47633 1,5.65228 1,8 C1,10.3478 1.73556,12.5239 2.9888,14.3102 "/>
+<path vector-effect="none" fill-rule="evenodd" d="M21.0114,14.31 C22.2645,12.5237 23,10.3477 23,8 C23,5.65217 22.2644,3.47614 21.0112,1.68978 "/>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,58.04,534.048)"
+font-family="Arial" font-size="14" font-weight="700" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="42" y="29.7969" font-family="Arial" font-size="14" font-weight="700" font-style="normal" 
+ >gNB</text>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,58.04,534.048)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="10" y="55.7969" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >gNB / UE cohorts</text>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,58.04,534.048)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="10" y="79.2969" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >gnb</text>
+</g>
+
+<g fill="#ffffff" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,45.5665,181.672)"
+font-family="Arial" font-size="12" font-weight="400" font-style="normal" 
+>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#2457a7" stroke-opacity="1" stroke-width="1.20255" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,1517.44,534.048)"
+font-family="Arial" font-size="12" font-weight="400" font-style="normal" 
+>
+<path vector-effect="none" fill-rule="evenodd" d="M0,8 C0,3.58172 3.58172,0 8,0 L172,0 C176.418,0 180,3.58172 180,8 L180,87 C180,91.4183 176.418,95 172,95 L8,95 C3.58172,95 0,91.4183 0,87 L0,8 Z "/>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,1517.44,534.048)"
+font-family="Arial" font-size="14" font-weight="700" font-style="normal" 
+>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" transform="matrix(1.24735,0,0,1.24735,1529.91,546.521)"
+font-family="Arial" font-size="14" font-weight="700" font-style="normal" 
+>
+<path vector-effect="none" fill-rule="evenodd" d="M3,5 L12,5 L12,2 L22,12 L12,22 L12,19 L3,19 "/>
+<path vector-effect="none" fill-rule="evenodd" d="M2,9 L8,9 "/>
+<path vector-effect="none" fill-rule="evenodd" d="M2,15 L8,15 "/>
+<path vector-effect="none" fill-rule="evenodd" d="M7,12 L16,12 "/>
+<path vector-effect="none" fill-rule="evenodd" d="M13,9 L16,12 L13,15 "/>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,1517.44,534.048)"
+font-family="Arial" font-size="14" font-weight="700" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="42" y="29.7969" font-family="Arial" font-size="14" font-weight="700" font-style="normal" 
+ >UPF</text>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,1517.44,534.048)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="10" y="55.7969" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >UPF / N3 · N4</text>
+</g>
+
+<g fill="#fef2dd" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,1517.44,534.048)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="10" y="79.2969" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >upf</text>
+</g>
+
+<g fill="#ffffff" fill-opacity="1" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1.24735,0,0,1.24735,45.5665,181.672)"
+font-family="Arial" font-size="12" font-weight="400" font-style="normal" 
+>
+</g>
+
+<g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Segoe UI" font-size="20.8333" font-weight="400" font-style="normal" 
+>
+</g>
+</g>
+</svg>

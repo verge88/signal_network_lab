@@ -1,0 +1,3008 @@
+{
+  "version": "validation-v1",
+  "generated_at": "2026-10-22T18:24:47.154718+00:00",
+  "project": {
+    "name": "Проверка сравнения",
+    "nodes": [
+      {
+        "id": "a",
+        "name": "Access",
+        "kind": "MME",
+        "x": 0.0,
+        "y": 0.0,
+        "capacity": 100000.0,
+        "processing_ms": 0.0,
+        "queue_limit": 100,
+        "enabled": true,
+        "point_code": "1-1-1",
+        "realm": "lab.example",
+        "host": "",
+        "workers": 4,
+        "service_distribution": "constant",
+        "service_cv": 0.5,
+        "database_ms": 0.0,
+        "cache_hit_ratio": 0.8,
+        "error_rate": 0.0,
+        "detection_ms": 300.0,
+        "switch_ms": 50.0,
+        "recovery_ms": 200.0,
+        "recovery_ramp_ms": 1000.0,
+        "applications": [
+          16777251,
+          4
+        ],
+        "routing_table": {},
+        "gtt": {},
+        "plmn": "00101",
+        "slices": [
+          "1-010203"
+        ],
+        "dnns": [
+          "internet"
+        ],
+        "nf_status": "REGISTERED",
+        "services": [],
+        "advertisement_delay_ms": 5.0,
+        "observer_detection_ms": null,
+        "storage_model": "queued",
+        "db_connections": 4,
+        "db_queue_limit": 100,
+        "db_timeout_ms": 1000.0,
+        "cache_entries": 1000,
+        "cache_ttl_s": 60.0,
+        "context_limit": 10000,
+        "pdu_session_limit": 10000,
+        "context_ttl_s": 300.0,
+        "transaction_cache_limit": 10000,
+        "transaction_cache_ttl_s": 30.0,
+        "upf_rules": [],
+        "upf_default_action": "forward",
+        "upf_rate_mbps": 0.0,
+        "upf_burst_bytes": 65536,
+        "upf_queue_limit": 100
+      },
+      {
+        "id": "b",
+        "name": "HSS",
+        "kind": "HSS",
+        "x": 300.0,
+        "y": 0.0,
+        "capacity": 100000.0,
+        "processing_ms": 0.0,
+        "queue_limit": 100,
+        "enabled": true,
+        "point_code": "1-1-1",
+        "realm": "lab.example",
+        "host": "",
+        "workers": 4,
+        "service_distribution": "constant",
+        "service_cv": 0.5,
+        "database_ms": 0.0,
+        "cache_hit_ratio": 0.8,
+        "error_rate": 0.0,
+        "detection_ms": 300.0,
+        "switch_ms": 50.0,
+        "recovery_ms": 200.0,
+        "recovery_ramp_ms": 1000.0,
+        "applications": [
+          16777251,
+          4
+        ],
+        "routing_table": {},
+        "gtt": {},
+        "plmn": "00101",
+        "slices": [
+          "1-010203"
+        ],
+        "dnns": [
+          "internet"
+        ],
+        "nf_status": "REGISTERED",
+        "services": [],
+        "advertisement_delay_ms": 5.0,
+        "observer_detection_ms": null,
+        "storage_model": "queued",
+        "db_connections": 4,
+        "db_queue_limit": 100,
+        "db_timeout_ms": 1000.0,
+        "cache_entries": 1000,
+        "cache_ttl_s": 60.0,
+        "context_limit": 10000,
+        "pdu_session_limit": 10000,
+        "context_ttl_s": 300.0,
+        "transaction_cache_limit": 10000,
+        "transaction_cache_ttl_s": 30.0,
+        "upf_rules": [],
+        "upf_default_action": "forward",
+        "upf_rate_mbps": 0.0,
+        "upf_burst_bytes": 65536,
+        "upf_queue_limit": 100
+      }
+    ],
+    "links": [
+      {
+        "id": "ab",
+        "source": "a",
+        "target": "b",
+        "protocol": "Diameter",
+        "latency_ms": 10.0,
+        "jitter_ms": 0.0,
+        "bandwidth_mbps": 1000.0,
+        "loss": 0.0,
+        "enabled": true,
+        "reverse_latency_ms": null,
+        "reverse_loss": null,
+        "buffer_bytes": 1048576,
+        "mtu": 1500,
+        "header_bytes": 64,
+        "loss_correlation": 0.0,
+        "transport_retries": 3,
+        "rto_ms": 200.0,
+        "rto_min_ms": 50.0,
+        "rto_max_ms": 3000.0,
+        "streams": 8,
+        "cwnd_packets": 8,
+        "path_group": "",
+        "routing_context": 1,
+        "asp_state": "ACTIVE",
+        "peer_state": "OPEN",
+        "startup_ms": 0.0,
+        "detection_ms": 300.0,
+        "switch_ms": 50.0,
+        "recovery_ms": 200.0,
+        "heartbeat_ms": 1000.0,
+        "control_timeout_ms": 500.0,
+        "control_retries": 1,
+        "reconnect_ms": 500.0,
+        "control_bytes": 128,
+        "peer_routing_context": null,
+        "shutdown_at_s": null
+      }
+    ],
+    "flows": [
+      {
+        "id": "f",
+        "source": "a",
+        "target": "b",
+        "protocol": "Diameter",
+        "operation": "Diameter ULR",
+        "rate": 8.0,
+        "message_bytes": 256,
+        "timeout_ms": 1000.0,
+        "procedure": "single",
+        "max_retries": 0,
+        "retry_backoff_ms": 200.0,
+        "response_bytes": 192,
+        "subscribers": 10000,
+        "traffic_profile": "poisson",
+        "profile_period_s": 60.0,
+        "profile_step_s": 0.1,
+        "profile_amplitude": 0.0,
+        "message_size_cv": 0.0,
+        "priority": 1,
+        "destination_pc": "",
+        "destination_realm": "",
+        "destination_host": "",
+        "global_title": "",
+        "application_id": 16777251,
+        "routing_context": 1,
+        "snssai": "1-010203",
+        "dnn": "internet",
+        "plmn": "00101",
+        "nf_bindings": {},
+        "use_nrf": true,
+        "use_nssf": true,
+        "use_pcf": true,
+        "initial_registered": true,
+        "service_timeout_ms": 1000.0,
+        "user_plane_enabled": true,
+        "data_network": "",
+        "data_packets": 10,
+        "data_interval_ms": 100.0,
+        "data_bytes": 1200,
+        "data_timeout_ms": 2000.0,
+        "application_profile": "probe",
+        "video_on_s": 1.0,
+        "video_off_s": 1.0,
+        "data_priority": 1,
+        "qos_budget_ms": 0.0,
+        "session_lifetime_s": 30.0,
+        "pdu_session_id": 1,
+        "pdu_session_count": 1,
+        "session_cleanup_retries": 3,
+        "session_cleanup_retry_s": 1.0,
+        "deregister_after_s": 0.0,
+        "mobility": []
+      }
+    ],
+    "incidents": [],
+    "attacks": [],
+    "clusters": [],
+    "monitoring": {
+      "enabled": false,
+      "members": [],
+      "features": [],
+      "faults": [],
+      "poll_s": 5.0,
+      "decision_s": 5.0,
+      "timeout_s": 2.0,
+      "ttl_s": 15.0,
+      "history": 5,
+      "query_bytes": 50,
+      "report_bytes": 200,
+      "priority": 1,
+      "sync": true,
+      "protocols": [
+        "SS7",
+        "M3UA",
+        "Diameter",
+        "NGAP",
+        "SBI",
+        "PFCP"
+      ]
+    },
+    "duration": 10,
+    "seed": 42,
+    "window": 1,
+    "engine": "procedures",
+    "routing_mode": "shortest",
+    "trace_limit": 1500,
+    "journal_sessions": 20,
+    "journal_events": 2000,
+    "journal_procedure_id": null,
+    "label_policy": "affected",
+    "degradation_latency_ms": 200.0,
+    "control_plane": false,
+    "routing_knowledge": "distributed",
+    "route_refresh_ms": 5000.0
+  },
+  "config_sha256": "cb3bf2148083647fead466af3bb284e8dec87b0d0b6b9285aca73d908a43d49b",
+  "input_csv_sha256": "43c0969c9a4eb0dfb62b02a4188cd52372d81ab32aba037bb2c1b6e70f51070c",
+  "policy": {
+    "seeds": 1,
+    "min_runs": 3,
+    "min_samples": 20,
+    "require_distribution": true,
+    "require_time_series": true,
+    "required_metrics": [
+      "delivery_ratio",
+      "latency_p95",
+      "throughput"
+    ],
+    "tolerances": {
+      "delivery_ratio": {
+        "absolute": 0.01,
+        "relative": 0.0
+      },
+      "latency_mean": {
+        "absolute": 2.0,
+        "relative": 0.1
+      },
+      "latency_p95": {
+        "absolute": 5.0,
+        "relative": 0.1
+      },
+      "latency_p99": {
+        "absolute": 10.0,
+        "relative": 0.15
+      },
+      "throughput": {
+        "absolute": 1.0,
+        "relative": 0.05
+      },
+      "retry_ratio": {
+        "absolute": 0.01,
+        "relative": 0.0
+      },
+      "recovery_ms": {
+        "absolute": 25.0,
+        "relative": 0.15
+      }
+    },
+    "max_ks": 0.15,
+    "max_wasserstein_ms": 5,
+    "expected_conditions": [
+      {
+        "scenario": "нет измерений",
+        "offered_rate": 40.0
+      }
+    ]
+  },
+  "policy_sha256": "005525a3209fecaaf08aa39b97e3a859a45f881bd2027951b0cbf796274ec4fb",
+  "simulations": 3,
+  "experiments": [
+    {
+      "index": 0,
+      "run_id": "synthetic-1",
+      "group_id": "synthetic-1",
+      "independent": true,
+      "scenario": "project",
+      "offered_rate": 8.0,
+      "condition_sha256": "bfd77f402dd7eb5d7e8217af86f91be51e9394d3968531f16449e8ef5d9f5696",
+      "source": {
+        "source_kind": "synthetic",
+        "measurement_id": "",
+        "device": "",
+        "firmware": "",
+        "measured_at": "",
+        "raw_sha256": ""
+      },
+      "evaluation_role": "validation",
+      "duration": 10,
+      "window": 1,
+      "incidents": [],
+      "attacks": [],
+      "seeds": [
+        176413048
+      ],
+      "predicted": {
+        "delivery_ratio": 1.0,
+        "latency_mean": 20.01490800000027,
+        "latency_p95": 20.014908000001014,
+        "latency_p99": 20.014908000001014,
+        "throughput": 6.9,
+        "retry_ratio": 0.0,
+        "recovery_ms": null
+      },
+      "seed_predictions": [
+        {
+          "delivery_ratio": 1.0,
+          "latency_mean": 20.01490800000027,
+          "latency_p95": 20.014908000001014,
+          "latency_p99": 20.014908000001014,
+          "throughput": 6.9,
+          "retry_ratio": 0.0,
+          "recovery_ms": null
+        }
+      ],
+      "errors": [
+        {
+          "scope": "aggregate",
+          "metric": "delivery_ratio",
+          "time": null,
+          "observed": 1.0,
+          "predicted": 1.0,
+          "absolute_error": 0.0,
+          "relative_error": 0.0,
+          "allowed": 0.01,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "latency_mean",
+          "time": null,
+          "observed": 20.014908000000354,
+          "predicted": 20.01490800000027,
+          "absolute_error": 8.526512829121202e-14,
+          "relative_error": 4.260080950220231e-15,
+          "allowed": 2.0014908000000355,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "latency_p95",
+          "time": null,
+          "observed": 20.014908000001014,
+          "predicted": 20.014908000001014,
+          "absolute_error": 0.0,
+          "relative_error": 0.0,
+          "allowed": 5.0,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "latency_p99",
+          "time": null,
+          "observed": 20.014908000001014,
+          "predicted": 20.014908000001014,
+          "absolute_error": 0.0,
+          "relative_error": 0.0,
+          "allowed": 10.0,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "throughput",
+          "time": null,
+          "observed": 10.6,
+          "predicted": 6.9,
+          "absolute_error": 3.6999999999999993,
+          "relative_error": 0.34905660377358483,
+          "allowed": 1.0,
+          "status": "failed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "retry_ratio",
+          "time": null,
+          "observed": 0.0,
+          "predicted": 0.0,
+          "absolute_error": 0.0,
+          "relative_error": null,
+          "allowed": 0.01,
+          "status": "passed"
+        }
+      ],
+      "distribution": {
+        "observed_n": 106,
+        "simulated_n": 69,
+        "observed_ecdf": [
+          [
+            20.014908,
+            0.0
+          ],
+          [
+            20.014908,
+            1.0
+          ]
+        ],
+        "simulated_ecdf": [
+          [
+            20.014908,
+            0.0
+          ],
+          [
+            20.014908,
+            1.0
+          ]
+        ],
+        "ks": 0.0,
+        "wasserstein_ms": 0.0,
+        "status": "passed"
+      },
+      "time_series": {
+        "observed": [
+          {
+            "time": 0.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.0149079999999,
+            "latency_p95": 20.014907999999934,
+            "latency_p99": 20.014907999999934,
+            "throughput": 8.0
+          },
+          {
+            "time": 1.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999878,
+            "latency_p95": 20.014907999999878,
+            "latency_p99": 20.014907999999878,
+            "throughput": 12.0
+          },
+          {
+            "time": 2.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 11.0
+          },
+          {
+            "time": 3.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 14.0
+          },
+          {
+            "time": 4.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000000972,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 11.0
+          },
+          {
+            "time": 5.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 12.0
+          },
+          {
+            "time": 6.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 6.0
+          },
+          {
+            "time": 7.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 12.0
+          },
+          {
+            "time": 8.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999348,
+            "latency_p95": 20.014907999999878,
+            "latency_p99": 20.01490800000006,
+            "throughput": 6.0
+          },
+          {
+            "time": 9.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999195,
+            "latency_p95": 20.014907999999195,
+            "latency_p99": 20.014907999999195,
+            "throughput": 14.0
+          }
+        ],
+        "predicted": [
+          {
+            "time": 0.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490799999993,
+            "latency_p95": 20.014908000000016,
+            "latency_p99": 20.01490800000002,
+            "throughput": 12.0
+          },
+          {
+            "time": 1.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999878,
+            "latency_p95": 20.014907999999878,
+            "latency_p99": 20.014907999999878,
+            "throughput": 4.0
+          },
+          {
+            "time": 2.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000000528,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 7.0
+          },
+          {
+            "time": 3.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 3.0
+          },
+          {
+            "time": 4.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 8.0
+          },
+          {
+            "time": 5.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 8.0
+          },
+          {
+            "time": 6.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 7.0
+          },
+          {
+            "time": 7.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 4.0
+          },
+          {
+            "time": 8.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999195,
+            "latency_p95": 20.014907999999195,
+            "latency_p99": 20.014907999999195,
+            "throughput": 6.0
+          },
+          {
+            "time": 9.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999195,
+            "latency_p95": 20.014907999999195,
+            "latency_p99": 20.014907999999195,
+            "throughput": 10.0
+          }
+        ],
+        "missing_times": [],
+        "complete": true,
+        "errors": [
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 0.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 0.0,
+            "observed": 20.0149079999999,
+            "predicted": 20.01490799999993,
+            "absolute_error": 3.197442310920451e-14,
+            "relative_error": 1.5975303563326232e-15,
+            "allowed": 2.00149079999999,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 0.0,
+            "observed": 20.014907999999934,
+            "predicted": 20.014908000000016,
+            "absolute_error": 8.171241461241152e-14,
+            "relative_error": 4.082577577294474e-15,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 0.0,
+            "observed": 20.014907999999934,
+            "predicted": 20.01490800000002,
+            "absolute_error": 8.526512829121202e-14,
+            "relative_error": 4.260080950220321e-15,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 0.0,
+            "observed": 8.0,
+            "predicted": 12.0,
+            "absolute_error": 4.0,
+            "relative_error": 0.5,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 1.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 1.0,
+            "observed": 20.014907999999878,
+            "predicted": 20.014907999999878,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.001490799999988,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 1.0,
+            "observed": 20.014907999999878,
+            "predicted": 20.014907999999878,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 1.0,
+            "observed": 20.014907999999878,
+            "predicted": 20.014907999999878,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 1.0,
+            "observed": 12.0,
+            "predicted": 4.0,
+            "absolute_error": 8.0,
+            "relative_error": 0.6666666666666666,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 2.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 2.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.014908000000528,
+            "absolute_error": 3.197442310920451e-14,
+            "relative_error": 1.5975303563325703e-15,
+            "allowed": 2.001490800000056,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 2.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 2.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 2.0,
+            "observed": 11.0,
+            "predicted": 7.0,
+            "absolute_error": 4.0,
+            "relative_error": 0.36363636363636365,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 3.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 3.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.001490800000056,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 3.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 3.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 3.0,
+            "observed": 14.0,
+            "predicted": 3.0,
+            "absolute_error": 11.0,
+            "relative_error": 0.7857142857142857,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 4.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 4.0,
+            "observed": 20.014908000000972,
+            "predicted": 20.014908000001014,
+            "absolute_error": 4.263256414560601e-14,
+            "relative_error": 2.13004047511005e-15,
+            "allowed": 2.0014908000000973,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 4.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 4.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 4.0,
+            "observed": 11.0,
+            "predicted": 8.0,
+            "absolute_error": 3.0,
+            "relative_error": 0.2727272727272727,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 5.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 5.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014908000001017,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 5.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 5.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 5.0,
+            "observed": 12.0,
+            "predicted": 8.0,
+            "absolute_error": 4.0,
+            "relative_error": 0.3333333333333333,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 6.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 6.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014908000001017,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 6.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 6.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 6.0,
+            "observed": 6.0,
+            "predicted": 7.0,
+            "absolute_error": 1.0,
+            "relative_error": 0.16666666666666666,
+            "allowed": 1.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 7.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 7.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014908000001017,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 7.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 7.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 7.0,
+            "observed": 12.0,
+            "predicted": 4.0,
+            "absolute_error": 8.0,
+            "relative_error": 0.6666666666666666,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 8.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 8.0,
+            "observed": 20.014907999999348,
+            "predicted": 20.014907999999195,
+            "absolute_error": 1.5276668818842154e-13,
+            "relative_error": 7.632645035811631e-15,
+            "allowed": 2.0014907999999347,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 8.0,
+            "observed": 20.014907999999878,
+            "predicted": 20.014907999999195,
+            "absolute_error": 6.821210263296962e-13,
+            "relative_error": 3.4080647601762664e-14,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 8.0,
+            "observed": 20.01490800000006,
+            "predicted": 20.014907999999195,
+            "absolute_error": 8.633094239485217e-13,
+            "relative_error": 4.313331962098048e-14,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 8.0,
+            "observed": 6.0,
+            "predicted": 6.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 1.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 9.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 9.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014907999999195,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014907999999196,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 9.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014907999999195,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 9.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014907999999195,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 9.0,
+            "observed": 14.0,
+            "predicted": 10.0,
+            "absolute_error": 4.0,
+            "relative_error": 0.2857142857142857,
+            "allowed": 1.0,
+            "status": "failed"
+          }
+        ]
+      },
+      "missing": [],
+      "status": "failed"
+    },
+    {
+      "index": 1,
+      "run_id": "synthetic-2",
+      "group_id": "synthetic-2",
+      "independent": true,
+      "scenario": "project",
+      "offered_rate": 8.0,
+      "condition_sha256": "bfd77f402dd7eb5d7e8217af86f91be51e9394d3968531f16449e8ef5d9f5696",
+      "source": {
+        "source_kind": "synthetic",
+        "measurement_id": "",
+        "device": "",
+        "firmware": "",
+        "measured_at": "",
+        "raw_sha256": ""
+      },
+      "evaluation_role": "validation",
+      "duration": 10,
+      "window": 1,
+      "incidents": [],
+      "attacks": [],
+      "seeds": [
+        707743698
+      ],
+      "predicted": {
+        "delivery_ratio": 1.0,
+        "latency_mean": 20.014908000000442,
+        "latency_p95": 20.014908000001014,
+        "latency_p99": 20.014908000001014,
+        "throughput": 8.4,
+        "retry_ratio": 0.0,
+        "recovery_ms": null
+      },
+      "seed_predictions": [
+        {
+          "delivery_ratio": 1.0,
+          "latency_mean": 20.014908000000442,
+          "latency_p95": 20.014908000001014,
+          "latency_p99": 20.014908000001014,
+          "throughput": 8.4,
+          "retry_ratio": 0.0,
+          "recovery_ms": null
+        }
+      ],
+      "errors": [
+        {
+          "scope": "aggregate",
+          "metric": "delivery_ratio",
+          "time": null,
+          "observed": 1.0,
+          "predicted": 1.0,
+          "absolute_error": 0.0,
+          "relative_error": 0.0,
+          "allowed": 0.01,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "latency_mean",
+          "time": null,
+          "observed": 20.014908000000368,
+          "predicted": 20.014908000000442,
+          "absolute_error": 7.460698725481052e-14,
+          "relative_error": 3.7275708314427e-15,
+          "allowed": 2.001490800000037,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "latency_p95",
+          "time": null,
+          "observed": 20.014908000001014,
+          "predicted": 20.014908000001014,
+          "absolute_error": 0.0,
+          "relative_error": 0.0,
+          "allowed": 5.0,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "latency_p99",
+          "time": null,
+          "observed": 20.014908000001014,
+          "predicted": 20.014908000001014,
+          "absolute_error": 0.0,
+          "relative_error": 0.0,
+          "allowed": 10.0,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "throughput",
+          "time": null,
+          "observed": 9.4,
+          "predicted": 8.4,
+          "absolute_error": 1.0,
+          "relative_error": 0.10638297872340426,
+          "allowed": 1.0,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "retry_ratio",
+          "time": null,
+          "observed": 0.0,
+          "predicted": 0.0,
+          "absolute_error": 0.0,
+          "relative_error": null,
+          "allowed": 0.01,
+          "status": "passed"
+        }
+      ],
+      "distribution": {
+        "observed_n": 94,
+        "simulated_n": 84,
+        "observed_ecdf": [
+          [
+            20.014908,
+            0.0
+          ],
+          [
+            20.014908,
+            1.0
+          ]
+        ],
+        "simulated_ecdf": [
+          [
+            20.014908,
+            0.0
+          ],
+          [
+            20.014908,
+            1.0
+          ]
+        ],
+        "ks": 0.0,
+        "wasserstein_ms": 0.0,
+        "status": "passed"
+      },
+      "time_series": {
+        "observed": [
+          {
+            "time": 0.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999906,
+            "latency_p95": 20.014907999999995,
+            "latency_p99": 20.014908000000016,
+            "throughput": 7.0
+          },
+          {
+            "time": 1.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999878,
+            "latency_p95": 20.014907999999878,
+            "latency_p99": 20.014907999999878,
+            "throughput": 11.0
+          },
+          {
+            "time": 2.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 9.0
+          },
+          {
+            "time": 3.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 11.0
+          },
+          {
+            "time": 4.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000000965,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 9.0
+          },
+          {
+            "time": 5.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 15.0
+          },
+          {
+            "time": 6.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 10.0
+          },
+          {
+            "time": 7.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 5.0
+          },
+          {
+            "time": 8.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999195,
+            "latency_p95": 20.014907999999195,
+            "latency_p99": 20.014907999999195,
+            "throughput": 8.0
+          },
+          {
+            "time": 9.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999195,
+            "latency_p95": 20.014907999999195,
+            "latency_p99": 20.014907999999195,
+            "throughput": 9.0
+          }
+        ],
+        "predicted": [
+          {
+            "time": 0.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999917,
+            "latency_p95": 20.014907999999977,
+            "latency_p99": 20.014907999999988,
+            "throughput": 6.0
+          },
+          {
+            "time": 1.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999878,
+            "latency_p95": 20.014907999999878,
+            "latency_p99": 20.014907999999878,
+            "throughput": 10.0
+          },
+          {
+            "time": 2.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 7.0
+          },
+          {
+            "time": 3.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 6.0
+          },
+          {
+            "time": 4.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000000975,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 11.0
+          },
+          {
+            "time": 5.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 10.0
+          },
+          {
+            "time": 6.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 12.0
+          },
+          {
+            "time": 7.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 6.0
+          },
+          {
+            "time": 8.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.0149079999996,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 9.0
+          },
+          {
+            "time": 9.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999195,
+            "latency_p95": 20.014907999999195,
+            "latency_p99": 20.014907999999195,
+            "throughput": 7.0
+          }
+        ],
+        "missing_times": [],
+        "complete": true,
+        "errors": [
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 0.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 0.0,
+            "observed": 20.014907999999906,
+            "predicted": 20.014907999999917,
+            "absolute_error": 1.0658141036401503e-14,
+            "relative_error": 5.325101187775408e-16,
+            "allowed": 2.0014907999999907,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 0.0,
+            "observed": 20.014907999999995,
+            "predicted": 20.014907999999977,
+            "absolute_error": 1.7763568394002505e-14,
+            "relative_error": 8.875168646292308e-16,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 0.0,
+            "observed": 20.014908000000016,
+            "predicted": 20.014907999999988,
+            "absolute_error": 2.842170943040401e-14,
+            "relative_error": 1.4200269834067679e-15,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 0.0,
+            "observed": 7.0,
+            "predicted": 6.0,
+            "absolute_error": 1.0,
+            "relative_error": 0.14285714285714285,
+            "allowed": 1.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 1.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 1.0,
+            "observed": 20.014907999999878,
+            "predicted": 20.014907999999878,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.001490799999988,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 1.0,
+            "observed": 20.014907999999878,
+            "predicted": 20.014907999999878,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 1.0,
+            "observed": 20.014907999999878,
+            "predicted": 20.014907999999878,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 1.0,
+            "observed": 11.0,
+            "predicted": 10.0,
+            "absolute_error": 1.0,
+            "relative_error": 0.09090909090909091,
+            "allowed": 1.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 2.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 2.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.001490800000056,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 2.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 2.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 2.0,
+            "observed": 9.0,
+            "predicted": 7.0,
+            "absolute_error": 2.0,
+            "relative_error": 0.2222222222222222,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 3.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 3.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.001490800000056,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 3.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 3.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 3.0,
+            "observed": 11.0,
+            "predicted": 6.0,
+            "absolute_error": 5.0,
+            "relative_error": 0.45454545454545453,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 4.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 4.0,
+            "observed": 20.014908000000965,
+            "predicted": 20.014908000000975,
+            "absolute_error": 1.0658141036401503e-14,
+            "relative_error": 5.325101187775127e-16,
+            "allowed": 2.0014908000000964,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 4.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 4.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 4.0,
+            "observed": 9.0,
+            "predicted": 11.0,
+            "absolute_error": 2.0,
+            "relative_error": 0.2222222222222222,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 5.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 5.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014908000001017,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 5.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 5.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 5.0,
+            "observed": 15.0,
+            "predicted": 10.0,
+            "absolute_error": 5.0,
+            "relative_error": 0.3333333333333333,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 6.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 6.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014908000001017,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 6.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 6.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 6.0,
+            "observed": 10.0,
+            "predicted": 12.0,
+            "absolute_error": 2.0,
+            "relative_error": 0.2,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 7.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 7.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014908000001017,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 7.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 7.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 7.0,
+            "observed": 5.0,
+            "predicted": 6.0,
+            "absolute_error": 1.0,
+            "relative_error": 0.2,
+            "allowed": 1.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 8.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 8.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.0149079999996,
+            "absolute_error": 4.050093593832571e-13,
+            "relative_error": 2.023538451354727e-14,
+            "allowed": 2.0014907999999196,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 8.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014908000001014,
+            "absolute_error": 1.8189894035458565e-12,
+            "relative_error": 9.088172693803687e-14,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 8.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014908000001014,
+            "absolute_error": 1.8189894035458565e-12,
+            "relative_error": 9.088172693803687e-14,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 8.0,
+            "observed": 8.0,
+            "predicted": 9.0,
+            "absolute_error": 1.0,
+            "relative_error": 0.125,
+            "allowed": 1.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 9.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 9.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014907999999195,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014907999999196,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 9.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014907999999195,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 9.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014907999999195,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 9.0,
+            "observed": 9.0,
+            "predicted": 7.0,
+            "absolute_error": 2.0,
+            "relative_error": 0.2222222222222222,
+            "allowed": 1.0,
+            "status": "failed"
+          }
+        ]
+      },
+      "missing": [],
+      "status": "failed"
+    },
+    {
+      "index": 2,
+      "run_id": "synthetic-3",
+      "group_id": "synthetic-3",
+      "independent": true,
+      "scenario": "project",
+      "offered_rate": 8.0,
+      "condition_sha256": "bfd77f402dd7eb5d7e8217af86f91be51e9394d3968531f16449e8ef5d9f5696",
+      "source": {
+        "source_kind": "synthetic",
+        "measurement_id": "",
+        "device": "",
+        "firmware": "",
+        "measured_at": "",
+        "raw_sha256": ""
+      },
+      "evaluation_role": "validation",
+      "duration": 10,
+      "window": 1,
+      "incidents": [],
+      "attacks": [],
+      "seeds": [
+        1291674646
+      ],
+      "predicted": {
+        "delivery_ratio": 1.0,
+        "latency_mean": 20.01490800000042,
+        "latency_p95": 20.014908000001014,
+        "latency_p99": 20.014908000001014,
+        "throughput": 8.7,
+        "retry_ratio": 0.0,
+        "recovery_ms": null
+      },
+      "seed_predictions": [
+        {
+          "delivery_ratio": 1.0,
+          "latency_mean": 20.01490800000042,
+          "latency_p95": 20.014908000001014,
+          "latency_p99": 20.014908000001014,
+          "throughput": 8.7,
+          "retry_ratio": 0.0,
+          "recovery_ms": null
+        }
+      ],
+      "errors": [
+        {
+          "scope": "aggregate",
+          "metric": "delivery_ratio",
+          "time": null,
+          "observed": 1.0,
+          "predicted": 1.0,
+          "absolute_error": 0.0,
+          "relative_error": 0.0,
+          "allowed": 0.01,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "latency_mean",
+          "time": null,
+          "observed": 20.014908000000315,
+          "predicted": 20.01490800000042,
+          "absolute_error": 1.0658141036401503e-13,
+          "relative_error": 5.3251011877753e-15,
+          "allowed": 2.0014908000000315,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "latency_p95",
+          "time": null,
+          "observed": 20.014908000001014,
+          "predicted": 20.014908000001014,
+          "absolute_error": 0.0,
+          "relative_error": 0.0,
+          "allowed": 5.0,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "latency_p99",
+          "time": null,
+          "observed": 20.014908000001014,
+          "predicted": 20.014908000001014,
+          "absolute_error": 0.0,
+          "relative_error": 0.0,
+          "allowed": 10.0,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "throughput",
+          "time": null,
+          "observed": 9.1,
+          "predicted": 8.7,
+          "absolute_error": 0.40000000000000036,
+          "relative_error": 0.043956043956043994,
+          "allowed": 1.0,
+          "status": "passed"
+        },
+        {
+          "scope": "aggregate",
+          "metric": "retry_ratio",
+          "time": null,
+          "observed": 0.0,
+          "predicted": 0.0,
+          "absolute_error": 0.0,
+          "relative_error": null,
+          "allowed": 0.01,
+          "status": "passed"
+        }
+      ],
+      "distribution": {
+        "observed_n": 91,
+        "simulated_n": 87,
+        "observed_ecdf": [
+          [
+            20.014908,
+            0.0
+          ],
+          [
+            20.014908,
+            1.0
+          ]
+        ],
+        "simulated_ecdf": [
+          [
+            20.014908,
+            0.0
+          ],
+          [
+            20.014908,
+            1.0
+          ]
+        ],
+        "ks": 0.0,
+        "wasserstein_ms": 0.0,
+        "status": "passed"
+      },
+      "time_series": {
+        "observed": [
+          {
+            "time": 0.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999952,
+            "latency_p95": 20.014908000000016,
+            "latency_p99": 20.01490800000003,
+            "throughput": 10.0
+          },
+          {
+            "time": 1.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999863,
+            "latency_p95": 20.014907999999878,
+            "latency_p99": 20.014907999999878,
+            "throughput": 9.0
+          },
+          {
+            "time": 2.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 13.0
+          },
+          {
+            "time": 3.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 7.0
+          },
+          {
+            "time": 4.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000000933,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 10.0
+          },
+          {
+            "time": 5.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 9.0
+          },
+          {
+            "time": 6.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 2.0
+          },
+          {
+            "time": 7.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 6.0
+          },
+          {
+            "time": 8.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999924,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 15.0
+          },
+          {
+            "time": 9.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999195,
+            "latency_p95": 20.014907999999195,
+            "latency_p99": 20.014907999999195,
+            "throughput": 10.0
+          }
+        ],
+        "predicted": [
+          {
+            "time": 0.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999895,
+            "latency_p95": 20.014907999999934,
+            "latency_p99": 20.014907999999934,
+            "throughput": 9.0
+          },
+          {
+            "time": 1.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999878,
+            "latency_p95": 20.014907999999878,
+            "latency_p99": 20.014907999999878,
+            "throughput": 9.0
+          },
+          {
+            "time": 2.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 10.0
+          },
+          {
+            "time": 3.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000056,
+            "latency_p95": 20.01490800000056,
+            "latency_p99": 20.01490800000056,
+            "throughput": 5.0
+          },
+          {
+            "time": 4.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.01490800000095,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 14.0
+          },
+          {
+            "time": 5.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 6.0
+          },
+          {
+            "time": 6.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 13.0
+          },
+          {
+            "time": 7.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014908000001014,
+            "latency_p95": 20.014908000001014,
+            "latency_p99": 20.014908000001014,
+            "throughput": 8.0
+          },
+          {
+            "time": 8.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999195,
+            "latency_p95": 20.014907999999195,
+            "latency_p99": 20.014907999999195,
+            "throughput": 9.0
+          },
+          {
+            "time": 9.0,
+            "width_s": 1.0,
+            "delivery_ratio": 1.0,
+            "latency_mean": 20.014907999999195,
+            "latency_p95": 20.014907999999195,
+            "latency_p99": 20.014907999999195,
+            "throughput": 4.0
+          }
+        ],
+        "missing_times": [],
+        "complete": true,
+        "errors": [
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 0.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 0.0,
+            "observed": 20.014907999999952,
+            "predicted": 20.014907999999895,
+            "absolute_error": 5.684341886080802e-14,
+            "relative_error": 2.840053966813545e-15,
+            "allowed": 2.001490799999995,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 0.0,
+            "observed": 20.014908000000016,
+            "predicted": 20.014907999999934,
+            "absolute_error": 8.171241461241152e-14,
+            "relative_error": 4.082577577294458e-15,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 0.0,
+            "observed": 20.01490800000003,
+            "predicted": 20.014907999999934,
+            "absolute_error": 9.592326932761353e-14,
+            "relative_error": 4.792591068997838e-15,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 0.0,
+            "observed": 10.0,
+            "predicted": 9.0,
+            "absolute_error": 1.0,
+            "relative_error": 0.1,
+            "allowed": 1.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 1.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 1.0,
+            "observed": 20.014907999999863,
+            "predicted": 20.014907999999878,
+            "absolute_error": 1.4210854715202004e-14,
+            "relative_error": 7.100134917033894e-16,
+            "allowed": 2.0014907999999862,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 1.0,
+            "observed": 20.014907999999878,
+            "predicted": 20.014907999999878,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 1.0,
+            "observed": 20.014907999999878,
+            "predicted": 20.014907999999878,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 1.0,
+            "observed": 9.0,
+            "predicted": 9.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 1.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 2.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 2.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.001490800000056,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 2.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 2.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 2.0,
+            "observed": 13.0,
+            "predicted": 10.0,
+            "absolute_error": 3.0,
+            "relative_error": 0.23076923076923078,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 3.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 3.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.001490800000056,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 3.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 3.0,
+            "observed": 20.01490800000056,
+            "predicted": 20.01490800000056,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 3.0,
+            "observed": 7.0,
+            "predicted": 5.0,
+            "absolute_error": 2.0,
+            "relative_error": 0.2857142857142857,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 4.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 4.0,
+            "observed": 20.014908000000933,
+            "predicted": 20.01490800000095,
+            "absolute_error": 1.7763568394002505e-14,
+            "relative_error": 8.875168646291893e-16,
+            "allowed": 2.0014908000000933,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 4.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 4.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 4.0,
+            "observed": 10.0,
+            "predicted": 14.0,
+            "absolute_error": 4.0,
+            "relative_error": 0.4,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 5.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 5.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014908000001017,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 5.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 5.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 5.0,
+            "observed": 9.0,
+            "predicted": 6.0,
+            "absolute_error": 3.0,
+            "relative_error": 0.3333333333333333,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 6.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 6.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014908000001017,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 6.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 6.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 6.0,
+            "observed": 2.0,
+            "predicted": 13.0,
+            "absolute_error": 11.0,
+            "relative_error": 5.5,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 7.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 7.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014908000001017,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 7.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 7.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014908000001014,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 7.0,
+            "observed": 6.0,
+            "predicted": 8.0,
+            "absolute_error": 2.0,
+            "relative_error": 0.3333333333333333,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 8.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 8.0,
+            "observed": 20.014907999999924,
+            "predicted": 20.014907999999195,
+            "absolute_error": 7.283063041541027e-13,
+            "relative_error": 3.6388191449798593e-14,
+            "allowed": 2.0014907999999925,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 8.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014907999999195,
+            "absolute_error": 1.8189894035458565e-12,
+            "relative_error": 9.088172693802861e-14,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 8.0,
+            "observed": 20.014908000001014,
+            "predicted": 20.014907999999195,
+            "absolute_error": 1.8189894035458565e-12,
+            "relative_error": 9.088172693802861e-14,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 8.0,
+            "observed": 15.0,
+            "predicted": 9.0,
+            "absolute_error": 6.0,
+            "relative_error": 0.4,
+            "allowed": 1.0,
+            "status": "failed"
+          },
+          {
+            "scope": "window",
+            "metric": "delivery_ratio",
+            "time": 9.0,
+            "observed": 1.0,
+            "predicted": 1.0,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 0.01,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_mean",
+            "time": 9.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014907999999195,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 2.0014907999999196,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p95",
+            "time": 9.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014907999999195,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 5.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "latency_p99",
+            "time": 9.0,
+            "observed": 20.014907999999195,
+            "predicted": 20.014907999999195,
+            "absolute_error": 0.0,
+            "relative_error": 0.0,
+            "allowed": 10.0,
+            "status": "passed"
+          },
+          {
+            "scope": "window",
+            "metric": "throughput",
+            "time": 9.0,
+            "observed": 10.0,
+            "predicted": 4.0,
+            "absolute_error": 6.0,
+            "relative_error": 0.6,
+            "allowed": 1.0,
+            "status": "failed"
+          }
+        ]
+      },
+      "missing": [],
+      "status": "failed"
+    }
+  ],
+  "conditions": [
+    {
+      "scenario": "project",
+      "offered_rate": 8.0,
+      "condition_sha256": "bfd77f402dd7eb5d7e8217af86f91be51e9394d3968531f16449e8ef5d9f5696",
+      "experiments": [
+        0,
+        1,
+        2
+      ],
+      "independent_runs": 3,
+      "sources": [
+        "synthetic"
+      ],
+      "status": "failed",
+      "missing": [],
+      "support": "synthetic_only"
+    },
+    {
+      "scenario": "нет измерений",
+      "offered_rate": 40.0,
+      "condition_sha256": null,
+      "experiments": [],
+      "independent_runs": 0,
+      "sources": [],
+      "status": "insufficient",
+      "missing": [
+        "Измерения этого условия отсутствуют"
+      ],
+      "support": "unverified"
+    }
+  ],
+  "summary": {
+    "conditions": 2,
+    "passed": 0,
+    "failed": 1,
+    "insufficient": 1
+  },
+  "hardware_accuracy_proven": false,
+  "raw_artifacts_verified": false,
+  "limitations": [
+    "Выводы относятся только к перечисленным нагрузкам, сценариям, конфигурациям и длительности. Интерполяция и экстраполяция не выполняются.",
+    "Источник и независимость измерений заявляет исследователь. Исходные файлы оборудования не проверены; синтетический пример не доказывает внешнюю достоверность.",
+    "Для ошибок проверяется каждый опыт, seed усредняются. Объединение опытов не скрывает отдельные выходы за допуск.",
+    "ECDF и расстояния используют равномерную выборку успешных завершённых процедур симулятора. Число точек отображения ограничено 400; расстояния считают по всей предоставленной выборке.",
+    "Совпадение с допусками не является статистическим доказательством эквивалентности или соответствия протокольным стандартам."
+  ]
+}

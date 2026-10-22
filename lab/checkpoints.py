@@ -32,7 +32,7 @@ def engine_for(project,progress=None,cancel=None):
 
 def registry(engine):
     objects={'engine':engine}
-    for name in ('storage','control','journal','telemetry','clusters','user_plane','mobility','session_lifecycle'):
+    for name in ('storage','control','journal','telemetry','clusters','monitoring','user_plane','mobility','session_lifecycle'):
         if hasattr(engine,name):objects[name]=getattr(engine,name)
     if hasattr(engine,'user_plane'):objects['upf_policy']=engine.user_plane.policy
     objects.update({'store:'+name:store for name,store in engine.storage.stores.items()})

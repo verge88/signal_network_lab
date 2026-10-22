@@ -282,6 +282,64 @@ class StateCluster(BaseModel):
         return self
 
 
+class MonitorMember(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    node: str
+    collector: str
+    zone: str=Field(default='Зона 1',min_length=1,max_length=50)
+    witness: str=''
+
+
+class MonitorFeature(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    name: str=Field(pattern=r'^[a-z][a-z0-9_]{0,49}$')
+    expression: str=Field(min_length=1,max_length=500)
+    group: str=Field(default='local',min_length=1,max_length=50)
+
+    @model_validator(mode='after')
+    def valid_expression(self):
+        from .monitor_expressions import parse
+        parse(self.expression)
+        if self.name in ('label','run_id','time','entity_id','collector','zone','fault_types','fault_intervals','schema_id','feature_contract','window_seconds','topology_id'):raise ValueError('Зарезервированное имя признака')
+        return self
+
+
+class MonitorFault(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    node: str
+    start: float=Field(ge=0,lt=86400)
+    duration: float=Field(gt=0,le=86400)
+    mode: Literal['scale','freeze','suppress','delay']='scale'
+    factor: float=Field(default=.1,ge=0,le=100)
+    delay_ms: float=Field(default=5000,ge=0,le=60000)
+
+
+class Monitoring(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    enabled: bool=False
+    members: list[MonitorMember]=Field(default_factory=list,max_length=60)
+    features: list[MonitorFeature]=Field(default_factory=list,max_length=100)
+    faults: list[MonitorFault]=Field(default_factory=list,max_length=60)
+    poll_s: float=Field(default=5,ge=.1,le=3600)
+    decision_s: float=Field(default=5,ge=.1,le=3600)
+    timeout_s: float=Field(default=2,ge=.01,le=120)
+    ttl_s: float=Field(default=15,ge=.1,le=7200)
+    history: int=Field(default=5,ge=1,le=100)
+    query_bytes: int=Field(default=50,ge=32,le=65536)
+    report_bytes: int=Field(default=200,ge=32,le=65536)
+    priority: int=Field(default=1,ge=0,le=2)
+    sync: bool=True
+    protocols: list[str]=Field(default_factory=lambda:['SS7','M3UA','Diameter','NGAP','SBI','PFCP'],min_length=1,max_length=6)
+
+    @model_validator(mode='after')
+    def consistent(self):
+        if len({m.node for m in self.members})!=len(self.members):raise ValueError('Узел может иметь только одно назначение мониторинга')
+        if len({f.name for f in self.features})!=len(self.features):raise ValueError('Имена признаков должны быть уникальны')
+        if any(p not in ('SS7','M3UA','Diameter','NGAP','SBI','PFCP') for p in self.protocols):raise ValueError('Неизвестный протокол мониторинга')
+        if self.enabled and (not self.members or not self.features):raise ValueError('Настройте участников и признаки мониторинга')
+        return self
+
+
 class Project(BaseModel):
     name: str = Field(default='Core Network / Research', max_length=100)
     nodes: list[Node] = Field(min_length=2, max_length=60)
@@ -290,6 +348,7 @@ class Project(BaseModel):
     incidents: list[Incident] = Field(default_factory=list, max_length=30)
     attacks: list[AttackScenario] = Field(default_factory=list, max_length=20)
     clusters: list[StateCluster]=Field(default_factory=list,max_length=10)
+    monitoring: Monitoring=Field(default_factory=Monitoring)
     duration: int = Field(default=60, ge=10, le=86400)
     seed: int = Field(default=42, ge=0, le=2147483647)
     window: int = Field(default=5, ge=1, le=3600)
@@ -311,6 +370,13 @@ class Project(BaseModel):
         if math.ceil(self.duration/self.window)>10000:raise ValueError('Лимит 10 000 окон: увеличьте окно измерений')
         if sum(math.ceil(self.duration/f.profile_step_s) for f in self.flows if f.traffic_profile!='poisson' or f.profile_amplitude)>2_000_000:raise ValueError('Лимит 2 млн интервалов профиля: увеличьте шаг профиля нагрузки')
         ids = {n.id for n in self.nodes}
+        monitor=self.monitoring
+        if monitor.enabled and self.engine!='procedures':raise ValueError('Мониторинг требует движок процедур')
+        for member in monitor.members:
+            if member.node not in ids or member.collector not in ids or (member.witness and member.witness not in ids) or member.node==member.collector:raise ValueError('Некорректное назначение мониторинга')
+        for fault in monitor.faults:
+            if fault.node not in {m.node for m in monitor.members} or fault.start+fault.duration>self.duration:raise ValueError('Воздействие на отчёт вне участников или длительности')
+        if monitor.enabled and (len(monitor.members)*math.ceil(self.duration/monitor.decision_s)>100000 or len(monitor.members)*math.ceil(self.duration/monitor.poll_s)>100000):raise ValueError('Лимит мониторинга: 100 000 опросов и строк; увеличьте интервалы')
         if len(ids) != len(self.nodes):
             raise ValueError('Идентификаторы узлов должны быть уникальными')
         for group in (self.links, self.flows):

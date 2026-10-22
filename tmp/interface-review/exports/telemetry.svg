@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="270.933mm" height="152.4mm"
+ viewBox="0 0 1600 900"
+ xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.2" baseProfile="tiny">
+<title>Телеметрия · Задержка p95</title>
+<desc>Время, s / Задержка p95</desc>
+<defs>
+</defs>
+<g fill="none" stroke="black" stroke-width="1" fill-rule="evenodd" stroke-linecap="square" stroke-linejoin="bevel" >
+
+<g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Segoe UI" font-size="20.8333" font-weight="400" font-style="normal" 
+>
+</g>
+
+<g fill="#ffffff" fill-opacity="1" stroke="none" transform="matrix(1,0,0,1,0,0)"
+font-family="Segoe UI" font-size="20.8333" font-weight="400" font-style="normal" 
+>
+<rect x="0" y="0" width="1600" height="900"/>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="19" font-weight="700" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="28" y="39.8594" font-family="Arial" font-size="19" font-weight="700" font-style="normal" 
+ >Телеметрия · Задержка </text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="249.766" y="39.8594" font-family="Arial" font-size="19" font-weight="700" font-style="normal" 
+ >p95</text>
+</g>
+
+<g fill="none" stroke="#2457a7" stroke-opacity="1" stroke-width="2" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<polyline fill="none" vector-effect="none" points="30,65 54,65 " />
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="62" y="70.7969" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >Задержка </text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="128.172" y="70.7969" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >p95</text>
+</g>
+
+<g fill="none" stroke="#d8d8d8" stroke-opacity="1" stroke-dasharray="1,2" stroke-dashoffset="0" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<polyline fill="none" vector-effect="none" points="82,828 1568,828 " />
+<polyline fill="none" vector-effect="none" points="82,93 82,828 " />
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="63.4531" y="833.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >0</text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="78.2188" y="852.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >0</text>
+</g>
+
+<g fill="none" stroke="#d8d8d8" stroke-opacity="1" stroke-dasharray="1,2" stroke-dashoffset="0" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<polyline fill="none" vector-effect="none" points="82,681 1568,681 " />
+<polyline fill="none" vector-effect="none" points="379.2,93 379.2,828 " />
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="37.7813" y="686.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >40.02</text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="370.125" y="852.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >1.8</text>
+</g>
+
+<g fill="none" stroke="#d8d8d8" stroke-opacity="1" stroke-dasharray="1,2" stroke-dashoffset="0" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<polyline fill="none" vector-effect="none" points="82,534 1568,534 " />
+<polyline fill="none" vector-effect="none" points="676.4,93 676.4,828 " />
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="37.7813" y="539.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >80.04</text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="667.328" y="852.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >3.6</text>
+</g>
+
+<g fill="none" stroke="#d8d8d8" stroke-opacity="1" stroke-dasharray="1,2" stroke-dashoffset="0" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<polyline fill="none" vector-effect="none" points="82,387 1568,387 " />
+<polyline fill="none" vector-effect="none" points="973.6,93 973.6,828 " />
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="37.7813" y="392.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >120.1</text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="964.531" y="852.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >5.4</text>
+</g>
+
+<g fill="none" stroke="#d8d8d8" stroke-opacity="1" stroke-dasharray="1,2" stroke-dashoffset="0" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<polyline fill="none" vector-effect="none" points="82,240 1568,240 " />
+<polyline fill="none" vector-effect="none" points="1270.8,93 1270.8,828 " />
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="37.7813" y="245.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >160.1</text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="1261.73" y="852.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >7.2</text>
+</g>
+
+<g fill="none" stroke="#d8d8d8" stroke-opacity="1" stroke-dasharray="1,2" stroke-dashoffset="0" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<polyline fill="none" vector-effect="none" points="82,93 1568,93 " />
+<polyline fill="none" vector-effect="none" points="1568,93 1568,828 " />
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="37.7813" y="98.7969" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >200.1</text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="1564.22" y="852.797" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >9</text>
+<polyline fill="none" vector-effect="none" points="82,828 1568,828 " />
+<polyline fill="none" vector-effect="none" points="82,828 82,93 " />
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+</g>
+
+<g fill="none" stroke="#2457a7" stroke-opacity="1" stroke-width="2" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<path vector-effect="none" fill-rule="evenodd" d="M82,517.711 L247.111,512.249 L412.222,160.817 L577.333,438.915 L742.444,134.604 L907.556,437.513 L1072.67,174.616 L1237.78,518.524 L1402.89,439.99 L1568,443.461 "/>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="798.391" y="883.297" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >Время, </text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="845.656" y="883.297" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >s</text>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(0,-1,1,0,18,460.5)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="-44.7344" y="5.79688" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >Задержка </text>
+<text fill="#161616" fill-opacity="1" stroke="none" xml:space="preserve" x="21.4375" y="5.79688" font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+ >p95</text>
+</g>
+
+<g fill="none" stroke="#161616" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Arial" font-size="14" font-weight="400" font-style="normal" 
+>
+</g>
+
+<g fill="none" stroke="#000000" stroke-opacity="1" stroke-width="1" stroke-linecap="square" stroke-linejoin="bevel" transform="matrix(1,0,0,1,0,0)"
+font-family="Segoe UI" font-size="20.8333" font-weight="400" font-style="normal" 
+>
+</g>
+</g>
+</svg>

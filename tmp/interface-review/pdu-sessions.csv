@@ -1,0 +1,3 @@
+﻿Процедура / ID;UE / gNB;DNN / срез;AMF / SMF / UPF;Состояние;Создана / изменена, s;Контексты;Автоочистка;Причина
+1 / 1;0 / gnb;internet / 1-010203;amf / smf / upf;Остались ресурсы;0,100 / 1,518;upf;2;service_timeout
+2 / 2;0 / gnb;internet / 1-010203;amf / smf / upf;Активна;0,300 / 0,381;amf, pcf, smf, upf;0;—

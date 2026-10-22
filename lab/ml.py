@@ -25,12 +25,30 @@ def scores(model, algorithm, x):
     return -model.score_samples(x) if algorithm=='isolation_forest' else model.predict_proba(x)[:,1]
 
 
-def train(rows, algorithm, seed=42, threshold=None, trees=120, contamination=0.1, threshold_mode='validation', feature_set='legacy-v1', evaluation_mode='run', holdout_value=None):
+def input_matrix(rows,feature_set,custom_spec=None,feature_names=None):
+    if custom_spec is None:return matrix(rows,feature_set)
+    from .monitoring import schema_spec
+    from .schema import Monitoring
+    # Recompute schema identity from its definitions/semantics, never trust an imported ID.
+    semantics=custom_spec['semantics']
+    config=Monitoring(features=custom_spec['definitions'],poll_s=semantics['poll'],decision_s=semantics['decision'],ttl_s=semantics['ttl'],history=semantics['history'])
+    expected=schema_spec(config)
+    if expected!=custom_spec or feature_set!='monitoring:'+expected['id']:raise ValueError('Повреждена схема пользовательских признаков')
+    names=feature_names or expected['features']
+    if not names or len(set(names))!=len(names) or not set(names)<=set(expected['features']):raise ValueError('Некорректный выбор признаков')
+    if any(r.get('schema_id')!=expected['id'] or r.get('feature_contract')!='monitoring-v1' for r in rows):raise ValueError('Данные и схема мониторинга несовместимы')
+    try:values=[[float(r[f]) for f in names] for r in rows]
+    except (TypeError,KeyError,ValueError) as error:raise ValueError('Отсутствуют пользовательские признаки') from error
+    if not rows or not np.isfinite(values).all():raise ValueError('Признаки должны быть конечными числами')
+    return values
+
+
+def train(rows, algorithm, seed=42, threshold=None, trees=120, contamination=0.1, threshold_mode='validation', feature_set='legacy-v1', evaluation_mode='run', holdout_value=None,custom_spec=None,feature_names=None,fixed_split=None):
     contracts={r.get('feature_contract','messages-v1') for r in rows}
     if len(contracts)!=1:raise ValueError('Нельзя смешивать определения признаков messages-v1 и procedures-v2 в одном датасете')
     contract=next(iter(contracts))
-    features=list(specification(feature_set)['features'])
-    x=np.asarray(matrix(rows,feature_set),dtype=float)
+    features=list(feature_names or (custom_spec['features'] if custom_spec else specification(feature_set)['features']))
+    x=np.asarray(input_matrix(rows,feature_set,custom_spec,features),dtype=float)
     y=np.asarray([r['label'] for r in rows],dtype=int)
     groups=np.asarray([r['run_id'] for r in rows])
     ids=np.unique(groups)
@@ -54,8 +72,15 @@ def train(rows, algorithm, seed=42, threshold=None, trees=120, contamination=0.1
     # Find a group-disjoint 60/20/20 partition with both classes in each split.
     rng=np.random.default_rng(seed)
     split=None
+    if fixed_split:
+        parts=[np.asarray(fixed_split[k]) for k in ('train','validation','test')]
+        sets=[set(part) for part in parts]
+        if set.union(*sets)!=set(ids) or any(sets[i]&sets[j] for i in range(3) for j in range(i)):raise ValueError('Части должны разделять все независимые прогоны')
+        masks=[np.isin(groups,p) for p in parts]
+        if not all(len(np.unique(y[m]))==2 for m in masks):raise ValueError('В каждой части нужны оба класса')
+        split=(parts,masks)
     ntest=max(2,int(len(ids)*0.2))
-    for _ in range(200):
+    for _ in range(0 if fixed_split else 200):
         if held:
             shuffled=rng.permutation([i for i in ids if i not in held]);nval=max(1,int(len(shuffled)*.25))
             parts=[shuffled[nval:],shuffled[:nval],np.asarray(sorted(held))]
@@ -90,17 +115,17 @@ def train(rows, algorithm, seed=42, threshold=None, trees=120, contamination=0.1
     test=scores(model,algorithm,x[te])
     fpr,tpr,_=roc_curve(y[te],test)
     precision,recall,_=precision_recall_curve(y[te],test)
-    test_rows=[{key:r[key] for key in ('run_id','time','label','window_seconds','fault_intervals') if key in r} for r,selected in zip(rows,te) if selected]
-    operational=operational_metrics(test_rows,test,threshold)
+    test_rows=[{key:r[key] for key in ('run_id','time','label','window_seconds','fault_intervals','entity_id') if key in r} for r,selected in zip(rows,te) if selected]
+    operational=operational_metrics([dict(r,run_id=r['run_id']+'/'+r['entity_id']) if 'entity_id' in r else r for r in test_rows],test,threshold)
     conditions={name:dict(topologies=sorted({r['topology_id'] for r,m in zip(rows,mask) if m and 'topology_id' in r}),
         fault_types=sorted({v for r,m in zip(rows,mask) if m for v in r.get('fault_types',[])})) for name,mask in zip(('train','validation','test'),(tr,va,te))}
     model_id=uuid.uuid4().hex[:16]
     directory=DATA/'models'
     directory.mkdir(exist_ok=True)
-    joblib.dump(dict(model=model,algorithm=algorithm,features=features,feature_set=feature_set,feature_contract=contract),(directory/f'{model_id}.joblib'))
+    joblib.dump(dict(model=model,algorithm=algorithm,features=features,feature_set=feature_set,feature_contract=contract,custom_spec=custom_spec),(directory/f'{model_id}.joblib'))
     return dict(model_id=model_id,algorithm=algorithm,feature_set=feature_set,feature_contract=contract,threshold=threshold,seed=seed,
         evaluation=dict(mode=evaluation_mode,holdout=holdout_value,conditions=conditions),operational=operational,test_observations=test_rows,
-        training_config=dict(trees=trees,contamination=contamination,threshold_mode=threshold_mode,seed=seed),features=features,
+        training_config=dict(trees=trees,contamination=contamination,threshold_mode=threshold_mode,seed=seed),features=features,custom_spec=custom_spec,
         numpy_version=np.__version__,sklearn_version=sklearn.__version__,metrics=metrics(y[te],test,threshold),validation=metrics(y[va],validation,threshold),
         split={name:dict(runs=list(p),samples=int(m.sum())) for name,p,m in zip(['train','validation','test'],parts,[tr,va,te])},
         importance=[dict(feature=f,value=float(v)) for f,v in sorted(zip(features,importance),key=lambda z:-z[1])] if importance is not None else [],
@@ -113,7 +138,8 @@ def predict(model_id, rows, threshold):
     if {r.get('feature_contract','messages-v1') for r in rows}!={artifact.get('feature_contract','messages-v1')}:
         raise ValueError('Модель и прогон используют разные определения признаков (messages-v1 / procedures-v2). Обучите модель на соответствующем режиме.')
     key=artifact.get('feature_set','legacy-v1')
-    if list(specification(key)['features'])!=artifact['features']:raise ValueError('Набор признаков модели не соответствует версии')
-    x=np.asarray(matrix(rows,key),dtype=float)
+    custom=artifact.get('custom_spec')
+    if not custom and list(specification(key)['features'])!=artifact['features']:raise ValueError('Набор признаков модели не соответствует версии')
+    x=np.asarray(input_matrix(rows,key,custom,artifact['features']),dtype=float)
     score=scores(artifact['model'],artifact['algorithm'],x)
     return [dict(time=r['time'],score=float(s),anomaly=bool(s>=threshold),label=r['label']) for r,s in zip(rows,score)]

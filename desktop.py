@@ -25,7 +25,7 @@ def main():
     from PySide6.QtCore import Qt,QTimer
     from PySide6.QtGui import QFont,QFontDatabase
     from PySide6.QtWidgets import QApplication,QMessageBox
-    app=QApplication(sys.argv[:1]);app.setApplicationName('Signal Lab Desktop');app.setApplicationVersion('2.16.1');app.setOrganizationName('SignalLab');app.setStyle('Fusion')
+    app=QApplication(sys.argv[:1]);app.setApplicationName('Signal Lab Desktop');app.setApplicationVersion('2.17.0');app.setOrganizationName('SignalLab');app.setStyle('Fusion')
     from native.qt_gc import GuiGarbageCollector
     app.gui_collector=GuiGarbageCollector(app)
     from native.startup import StartupSplash
