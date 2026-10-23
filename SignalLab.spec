@@ -13,7 +13,7 @@ a=Analysis(
     [str(root/'desktop.py')],
     pathex=[str(root)],
     binaries=[],
-    datas=[(str(root/'README.md'),'.'),(str(root/'docs'),'docs'),(str(root/'requirements-native.txt'),'.'),(str(root/'THIRD-PARTY-NOTICES.md'),'.')]+license_data,
+    datas=[(str(root/'README.md'),'.'),(str(root/'docs'),'docs'),(str(root/'lab'/'testbed_agent.py'),'linux'),(str(root/'requirements-native.txt'),'.'),(str(root/'THIRD-PARTY-NOTICES.md'),'.')]+license_data,
     hiddenimports=['sklearn.ensemble._forest','sklearn.ensemble._iforest','sklearn.linear_model._logistic'],
     hookspath=[],
     hooksconfig={},

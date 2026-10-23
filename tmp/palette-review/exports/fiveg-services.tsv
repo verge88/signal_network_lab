@@ -1,0 +1,18 @@
+﻿Сервис / операция	Запросы	Успех	Ошибки	Тайм-ауты
+5G PDU Session	11	11	0	0
+Nnrf NFDiscovery	35	35	0	0
+Nsmf CreateSMContext	11	11	0	0
+Nudm SDMGet	23	23	0	0
+Nudr Query	46	46	0	0
+Npcf SMPolicyCreate	11	11	0	0
+PFCP Session Establishment	11	11	0	0
+NGAP PDUResourceSetup	11	11	0	0
+Nsmf UpdateSMContext	11	11	0	0
+PFCP Session Modification	11	11	0	0
+5G Registration	12	12	0	0
+Nausf UEAuthentication	12	12	0	0
+Nudm UEAuthentication	12	12	0	0
+NAS AuthenticationSecurity	12	12	0	0
+Nnssf NSSelection	12	12	0	0
+Nudm UECMRegistration	12	12	0	0
+Nudr Update	12	12	0	0

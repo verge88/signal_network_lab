@@ -43,7 +43,7 @@ class SmokeTest(QObject):
         finally:p.end()
         image.save(str(self.output/f'{name}-node-icons.png'))
     def verify_themes(self):
-        w=self.window;original_settings=w.settings;original_theme=w.theme;original_sidebar=w.sidebar_collapsed;original_overview=w.overview_height
+        w=self.window;original_settings=w.settings;original_theme=w.theme;original_sidebar=w.sidebar_collapsed;original_overview=w.overview_height;original_metrics=w.topology_metrics_action.isChecked()
         project=json.dumps(w.project,sort_keys=True);selection=w.selected;undo_count=w.undo.count()
         settings_path=str(storage.DATA/'theme-self-test.ini')
         try:
@@ -92,7 +92,7 @@ class SmokeTest(QObject):
                 w.sidebar_action.trigger();self.app.processEvents()
                 assert not w.sidebar_collapsed and all(b.text() for b in w.sidebar_buttons)
                 assert not QSettings(settings_path,QSettings.Format.IniFormat).value('sidebarCollapsed',True,type=bool)
-                w.show_page(0);w.set_overview_height(125);self.app.processEvents()
+                w.topology_metrics_action.setChecked(True);w.show_page(0);w.set_overview_height(125);self.app.processEvents()
                 compact_height=w.overview_widget.height();available_height=w.pages.height()
                 handle=w.workspace_split.handle(1);start=handle.rect().center()
                 QTest.mousePress(handle,Qt.MouseButton.LeftButton,pos=start)
@@ -113,7 +113,7 @@ class SmokeTest(QObject):
                 original_size=w.size();w.set_overview_height(300);w.resize(1080,700);self.app.processEvents()
                 assert w.pages.height()>=350 and w.overview_height==300, f'Small window: pages={w.pages.height()}, preference={w.overview_height}'
                 w.resize(original_size);self.app.processEvents();assert abs(w.overview_widget.height()-300)<=1, f'Restored header: {w.overview_widget.height()}, window={w.size()}, splitter={w.workspace_split.sizes()}'
-                w.set_overview_height(125);w.show_page(0);self.app.processEvents()
+                w.set_overview_height(125);w.topology_metrics_action.setChecked(False);w.show_page(0);self.app.processEvents()
             assert json.dumps(w.project,sort_keys=True)==project
             assert w.selected==selection and w.undo.count()==undo_count
             self.completed.append('pure-black and light monochrome themes, neutral rendering on all seven pages including the handbook and attack designer and saved theme')
@@ -121,7 +121,7 @@ class SmokeTest(QObject):
             self.completed.append('collapsible sidebar, icon navigation, tooltips, menu toggle and persisted state across all themes')
             self.completed.append('compact overview, real mouse resizing, numeric height dialog, saved height and page-switch restoration across all themes')
         finally:
-            w.settings=original_settings;w.apply_theme(original_theme,persist=False);w.set_sidebar_collapsed(original_sidebar,persist=False);w.set_overview_height(original_overview,persist=False)
+            w.settings=original_settings;w.apply_theme(original_theme,persist=False);w.set_sidebar_collapsed(original_sidebar,persist=False);w.topology_metrics_action.setChecked(original_metrics);w.set_overview_height(original_overview,persist=False)
     def start(self):
         try:
             w=self.window
@@ -134,6 +134,7 @@ class SmokeTest(QObject):
             self.verify_procedure_viewer()
             self.verify_expanded_ml()
             self.verify_monitoring()
+            self.verify_testbed()
             self.verify_handbook()
             self.verify_attacks()
             self.verify_resource_services()
@@ -153,6 +154,38 @@ class SmokeTest(QObject):
             w.job_completed.connect(self.next_stage)
             w.start_run()
         except Exception:self.fail(traceback.format_exc())
+    def verify_testbed(self):
+        from .testbed_dialog import TestbedDialog
+        from lab import testbed
+        from lab.testbed import Profile
+        from unittest.mock import patch
+        w=self.window;theme=w.theme;dialog=TestbedDialog(w)
+        try:
+            assert 'def main(request)' in testbed.agent_source()
+            p=Profile(name='Interface self-test');dialog.set_profile(p)
+            assert dialog.values()==p and p.subscribers[0].key not in dialog.preview.toPlainText()
+            assert dialog.subscribers.cellWidget(0,1).echoMode()==dialog.subscribers.cellWidget(0,1).EchoMode.Password
+            dialog.add_subscriber();assert dialog.subscribers.rowCount()==2;dialog.subscribers.selectRow(1);dialog.remove_row()
+            fixture=dict(source='fixture',clock='wall',prepared=True,core=[dict(component='nrf',alive=True,ready=True)],gnb_alive=True,
+                ues=[dict(imsi=p.subscribers[0].imsi,alive=True,registered=True,sessions=[dict(address='10.45.0.2')])],logs={'ue.log':'Interface fixture; not a live measurement'})
+            checks=dict(ready=True,kernel='fixture',checks=[dict(check='SCTP',ok=True,detail='fixture')],suggested_ran_bins=['/opt/UERANSIM/build'])
+            def synchronous(title,fn,done,*args,**kwargs):done(fn(lambda value:None,lambda:False))
+            with patch.object(w,'start_job',side_effect=synchronous),patch.object(testbed,'request',return_value=checks) as rpc:
+                dialog.action('preflight');assert rpc.call_args.args[1]=='preflight' and dialog.checks.rowCount()==1
+            dialog.accept_result(fixture);assert dialog.ues.rowCount()==1
+            record=storage.save('testbed_run','Interface fixture',dict(**fixture,data_tests=[dict(imsi=p.subscribers[0].imsi,interface='uesimtun0',target='10.45.0.1',sent=2,received=2,exit_code=0,rtt_samples_ms=[1.,2.],rtt_mean_ms=1.5,rtt_p95_ms=2.)],procedure_observations=[dict(imsi=p.subscribers[0].imsi,events=[dict(procedure='registration',start='fixture-start',end='fixture-end',latency_ms=10,status='success')])]))
+            dialog.accept_measurement(record);assert dialog.measurements.rowCount()==1 and dialog.procedures.rowCount()==1
+            for name in ('monochrome','light_monochrome','dark','graphite','porcelain'):
+                w.apply_theme(name,persist=False);dialog.show()
+                for tab in range(dialog.tabs.count()):
+                    dialog.tabs.setCurrentIndex(tab);self.app.processEvents()
+                    if self.output:assert dialog.grab().save(str(self.output/f'{name}-testbed-{tab}.png'))
+            self.completed.append('5G testbed native controller: WSL profile/credentials masking, packaged Linux worker, seven tabs in five themes, RPC without live mutations, NAS/ICMP views and provenance-separated history')
+        finally:
+            for control in dialog.compute_controls:
+                if control in w.compute_buttons:w.compute_buttons.remove(control)
+            dialog.close();dialog.deleteLater();w.apply_theme(theme,persist=False)
+
     def verify_monitoring(self):
         from .monitor_dialog import MonitorDialog
         from lab import monitor_study

@@ -125,7 +125,7 @@ class MainWindow(QMainWindow):
         self.metric_widget=QWidget();metrics=QHBoxLayout(self.metric_widget);metrics.setContentsMargins(0,0,0,0);metrics.setSpacing(12)
         self.metrics=[Metric(title,compact=True) for title in ('УЗЛЫ / КАНАЛЫ','УСПЕШНЫЕ ЗАВЕРШЕНИЯ / s','ЗАДЕРЖКА p95','УСПЕХ ПРОЦЕДУР / ДОСТАВКА')]
         for m in self.metrics:metrics.addWidget(m)
-        overview.addWidget(self.metric_widget,1);self.workspace_split.addWidget(self.overview_widget)
+        overview.addWidget(self.metric_widget,1);self.metric_widget.hide();self.workspace_split.addWidget(self.overview_widget)
         self.pages=QStackedWidget();self.workspace_split.addWidget(self.pages);self.workspace_split.setStretchFactor(0,0);self.workspace_split.setStretchFactor(1,1)
         handle=self.workspace_split.handle(1);handle.setToolTip('Потяните, чтобы изменить высоту верхнего блока. Точный размер: Вид → Высота верхнего блока…');handle.setAccessibleName('Изменить высоту верхнего блока')
         grip_layout=QHBoxLayout(handle);grip_layout.setContentsMargins(0,0,0,0);grip=QFrame();grip.setObjectName('OverviewGrip');grip.setFixedSize(44,2);grip.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents);grip_layout.addWidget(grip,alignment=Qt.AlignmentFlag.AlignCenter)
@@ -153,6 +153,8 @@ class MainWindow(QMainWindow):
         self.sidebar_action=QAction('Свернуть левое меню',self);self.sidebar_action.setCheckable(True);self.sidebar_action.setShortcut('Ctrl+B');self.sidebar_action.toggled.connect(self.set_sidebar_collapsed);view.addAction(self.sidebar_action)
         self.overview_action=self.menu_action(view,'Высота верхнего блока…',self.configure_overview_height)
         self.menu_action(view,'Компактный верхний блок',lambda:self.set_overview_height(OVERVIEW_MIN_HEIGHT))
+        self.topology_metrics_action=QAction('Показатели на топологии',self);self.topology_metrics_action.setCheckable(True)
+        self.topology_metrics_action.toggled.connect(lambda checked:self.update_metrics_visibility());view.addAction(self.topology_metrics_action)
         theme_menu=view.addMenu('Тема');theme_group=QActionGroup(self);theme_group.setExclusive(True);self.theme_actions={}
         for theme_name,title in THEMES.items():
             action=QAction(title,self);action.setCheckable(True);action.setChecked(self.theme==theme_name)
@@ -170,6 +172,7 @@ class MainWindow(QMainWindow):
         self.menu_action(research_menu,'Конструктор серий…',self.show_experiments)
         self.menu_action(research_menu,'Длительные прогоны…',self.show_long_runs)
         self.menu_action(research_menu,'Распределённый мониторинг…',self.show_monitoring)
+        self.menu_action(research_menu,'5G-стенд…',self.show_testbed)
         self.help_action=self.menu_action(help_menu,'Руководство пользователя',self.show_help,'F1')
         self.menu_action(templates,'5G · мобильность и QoS',lambda:self.new_project('5g-mobile'))
         self.menu_action(templates,'5G · репликация и резерв',lambda:self.new_project('5g-ha'))
@@ -186,6 +189,11 @@ class MainWindow(QMainWindow):
             from .monitor_dialog import MonitorDialog
             self.monitor_dialog=MonitorDialog(self)
         self.monitor_dialog.show();self.monitor_dialog.raise_();self.monitor_dialog.activateWindow()
+    def show_testbed(self):
+        if not getattr(self,'testbed_dialog',None):
+            from .testbed_dialog import TestbedDialog
+            self.testbed_dialog=TestbedDialog(self)
+        self.testbed_dialog.refresh_history();self.testbed_dialog.show();self.testbed_dialog.raise_();self.testbed_dialog.activateWindow()
     def show_validation(self):
         if not getattr(self,'validation_dialog',None):
             from .validation_dialog import ValidationDialog
@@ -289,8 +297,12 @@ class MainWindow(QMainWindow):
         self.sidebar_toggle.setToolTip(title+' (Ctrl+B)');self.sidebar_toggle.setAccessibleName(title)
         self.sidebar_action.blockSignals(True);self.sidebar_action.setChecked(collapsed);self.sidebar_action.setText(title);self.sidebar_action.blockSignals(False)
         if persist:self.settings.setValue('sidebarCollapsed',collapsed);self.settings.sync()
+    def update_metrics_visibility(self):
+        index=self.pages.currentIndex()
+        self.metric_widget.setVisible(index==2 or (index==0 and self.topology_metrics_action.isChecked()))
+        self.apply_overview_height()
     def apply_overview_height(self):
-        metrics=self.pages.currentIndex() in (0,2)
+        metrics=not self.metric_widget.isHidden()
         self.overview_widget.layout().activate()
         minimum=self.overview_widget.minimumSizeHint().height()
         self.overview_widget.setMaximumHeight(480 if metrics else minimum)
@@ -306,7 +318,7 @@ class MainWindow(QMainWindow):
         self.overview_height=max(OVERVIEW_MIN_HEIGHT,min(480,int(height)));self.apply_overview_height()
         if persist:self.settings.setValue('overviewHeight',self.overview_height);self.settings.sync()
     def overview_resized(self,position,index):
-        if self.pages.currentIndex() in (0,2):self.set_overview_height(self.workspace_split.sizes()[0])
+        if not self.metric_widget.isHidden():self.set_overview_height(self.workspace_split.sizes()[0])
     def configure_overview_height(self):
         d=QDialog(self);d.setWindowTitle('Высота верхнего блока');layout=QVBoxLayout(d)
         layout.addWidget(label('Изменяйте высоту также перетаскиванием границы под показателями.'))
@@ -332,7 +344,7 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.action_button('Расположить',self.auto_layout,'topology'));toolbar.addStretch();toolbar.addWidget(self.action_button('Монитор',lambda:self.monitor_card.setVisible(not self.monitor_card.isVisible()),'chart'));toolbar.addWidget(self.action_button('Вся сеть',lambda:self.graph.fit(),'fit'))
         cl.addLayout(toolbar);self.graph=NetworkView();self.graph.setMinimumSize(450,250);cl.addWidget(self.graph,1)
         self.draw_link_button.toggled.connect(self.graph.set_connection_mode);self.graph.connection_mode_changed.connect(self.draw_link_button.setChecked)
-        footer=label('SS7 / M3UA / Diameter / 5G: NGAP · SBI · PFCP · N3/N6\nКанал: нажмите узел и перетащите появившийся кружок к другому узлу · Колёсико: масштаб · Пробел: панорама','Muted');footer.setWordWrap(True);footer.setStyleSheet('font-size:9px;padding:0 10px 11px;color:#7389a3');cl.addWidget(footer)
+        footer=label('SS7 / M3UA / Diameter / 5G: NGAP · SBI · PFCP · N3/N6\nКанал: нажмите узел и перетащите появившийся кружок к другому узлу · Колесо: прокрутка · Shift: по горизонтали · Ctrl: масштаб · Зажатое колесо / Пробел: панорама','Muted');footer.setWordWrap(True);footer.setStyleSheet('font-size:9px;padding:0 10px 11px;color:#7389a3');cl.addWidget(footer)
         self.topology_split.addWidget(canvas)
         self.inspector=QScrollArea();self.inspector.setWidgetResizable(True);self.inspector.setMinimumWidth(270);self.inspector.setMaximumWidth(355);self.topology_split.addWidget(self.inspector);self.topology_split.setSizes([900,300]);self.topology_split.setStretchFactor(0,1)
         layout.addWidget(self.topology_split,1)
@@ -482,8 +494,7 @@ class MainWindow(QMainWindow):
         self.pages.setCurrentIndex(index)
         for i,b in enumerate(self.nav_buttons):b.setChecked(i==index)
         titles=['Топология сети','Конструктор экспериментов','Телеметрия сети','Мастерская детекторов','Результаты исследований','Справка и руководство','Конструктор атак']
-        self.title.setText(titles[index]);self.metric_widget.setVisible(index in (0,2))
-        self.apply_overview_height()
+        self.title.setText(titles[index]);self.update_metrics_visibility()
         if index==0:QTimer.singleShot(0,self.graph.fit)
     def load_workspace(self):
         draft=storage.DATA/'desktop-workspace.json'
@@ -931,9 +942,9 @@ class MainWindow(QMainWindow):
         if r.get('test_observations'):r['exploratory_operational']=operational_metrics(r['test_observations'],r['test_scores'],self.current_threshold)
         self.write_export(r,'model')
     def shortcuts(self):
-        QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолёсико — масштаб\nПробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
+        QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолесо — прокрутка карты\nShift + колесо — по горизонтали\nCtrl + колесо — масштаб\nЗажатое колесо или Пробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.17.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.18.2','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             dialog=getattr(self,'long_run_dialog',None)

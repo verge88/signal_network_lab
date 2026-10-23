@@ -61,7 +61,7 @@ class ThemePaletteTests(unittest.TestCase):
             clipboard=Mock()
             with patch('native.palette_dialog.QApplication') as app:
                 app.clipboard.return_value=clipboard
-                dialog.color_buttons[0].click();clipboard.setText.assert_called_with('#FFFFFF')
+                dialog.color_buttons[0].click();clipboard.setText.assert_called_with('#F3F6FB')
                 dialog.copy_all.click();clipboard.setText.assert_called_with(palette_text('porcelain'))
             dialog.apply_button.click();callback.assert_called_once_with('porcelain')
         finally:dialog.deleteLater()

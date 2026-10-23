@@ -1,13 +1,13 @@
 import re
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPalette
 from PySide6.QtCore import Qt, QRectF
-from .theme_palettes import EDITOR_PALETTES,LEGACY_ROLES
+from .theme_palettes import EDITOR_PALETTES,LEGACY_ROLES,DEFAULT_THEME
 
 COLORS=dict(bg='#11151c',panel='#191f29',raised='#212a36',line='#2c3746',text='#e5ebf5',muted='#8c9bb0',accent='#8fe0c2',blue='#82adfa',orange='#e7b375',red='#ed8c93')
 
 THEMES={'monochrome':'Чёрно-белая · Pure Black','light_monochrome':'Светлая · Монохром','dark':'Тёмная · Signal'}
 THEMES.update((key,palette['name']) for key,palette in EDITOR_PALETTES.items())
-_current_theme='monochrome'
+_current_theme=DEFAULT_THEME
 
 # Semantic overrides keep surfaces truly black and primary actions white.
 # Remaining colors become neutral gray, including transparent painter colors.
@@ -54,8 +54,8 @@ def current_theme():return _current_theme
 
 
 def saved_theme(settings):
-    value=settings.value('theme','monochrome')
-    return value if value in THEMES else 'monochrome'
+    value=settings.value('theme',DEFAULT_THEME)
+    return value if value in THEMES else DEFAULT_THEME
 
 
 def themed_color(*args):
@@ -99,8 +99,25 @@ QPushButton#Primary {{ background: {accent}; color: {on_accent}; border-color: {
 QPushButton#Primary:hover {{ background: {accent_hover}; border-color: {accent_hover}; }}
 QPushButton#Primary:disabled {{ background: {raised}; color: {disabled}; border-color: {border}; }}
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{ selection-background-color: {selection}; selection-color: {selection_text}; }}
-QStatusBar {{ background: {accent}; color: {on_accent}; }}
-QStatusBar QLabel {{ color: {on_accent}; }}
+QFrame#Panel, QFrame#Metric, QFrame#Toolbar {{ border-color: {grid}; }}
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{ background: {input}; border-color: {border}; }}
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus {{ border-color: {accent_text}; }}
+QPushButton:focus, QToolButton:focus {{ border: 1px solid {accent_text}; }}
+QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled, QPlainTextEdit:disabled {{ background: {panel}; color: {disabled}; border-color: {grid}; }}
+QTableView, QListWidget {{ background: {panel}; alternate-background-color: {bg}; border-color: {grid}; }}
+QHeaderView::section {{ background: {raised}; color: {muted}; border-bottom-color: {border}; }}
+QTableCornerButton::section {{ background: {raised}; }}
+QPushButton#Nav:checked {{ background: {selection}; color: {accent_text}; }}
+QCheckBox::indicator:checked {{ background: {accent}; border-color: {accent_text}; }}
+QCheckBox:disabled {{ color: {disabled}; }}
+QCheckBox::indicator:disabled {{ background: {raised}; border-color: {grid}; }}
+QCheckBox::indicator:checked:disabled {{ background: {disabled}; }}
+QCheckBox:focus {{ color: {accent_text}; }}
+QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {{ background: {muted}; }}
+QStatusBar {{ background: {sidebar}; color: {muted}; border-top-color: {grid}; }}
+QStatusBar QLabel {{ color: {muted}; }}
+QMenu::item:disabled {{ color: {disabled}; }}
+QToolTip {{ background: {raised}; color: {text}; border-color: {border}; }}
 '''.format(**p)
     return source
 
@@ -112,6 +129,9 @@ def application_palette():
     for role in (QPalette.ColorRole.Text,QPalette.ColorRole.ButtonText,QPalette.ColorRole.WindowText):p.setColor(QPalette.ColorGroup.Disabled,role,themed_color('#566376'))
     if _current_theme in EDITOR_PALETTES:
         colors=EDITOR_PALETTES[_current_theme]
+        for role,key in [(QPalette.ColorRole.Base,'input'),(QPalette.ColorRole.AlternateBase,'bg'),
+                         (QPalette.ColorRole.Highlight,'selection'),(QPalette.ColorRole.Button,'raised')]:
+            p.setColor(role,QColor(colors[key]))
         p.setColor(QPalette.ColorRole.HighlightedText,QColor(colors['selection_text']))
         p.setColor(QPalette.ColorRole.Link,QColor(colors['accent_text']))
         p.setColor(QPalette.ColorRole.LinkVisited,QColor(colors['blue']))

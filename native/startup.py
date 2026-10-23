@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt,QSettings,QRectF
 from PySide6.QtGui import QColor,QFont,QPainter,QPainterPath,QPen,QPixmap,QCursor
 from PySide6.QtWidgets import QApplication,QSplashScreen
-from .theme_palettes import EDITOR_PALETTES
+from .theme_palettes import EDITOR_PALETTES,DEFAULT_THEME
 
 
 SPLASH_COLORS={
@@ -16,8 +16,8 @@ SPLASH_COLORS.update((key,tuple(palette[role] for role in ('bg','text','muted','
 class StartupSplash(QSplashScreen):
     def __init__(self,theme=None):
         super().__init__(QPixmap(),Qt.WindowType.WindowStaysOnTopHint)
-        self.theme=theme or QSettings('SignalLab','SignalLabDesktop').value('theme','monochrome')
-        if self.theme not in SPLASH_COLORS:self.theme='monochrome'
+        self.theme=theme or QSettings('SignalLab','SignalLabDesktop').value('theme',DEFAULT_THEME)
+        if self.theme not in SPLASH_COLORS:self.theme=DEFAULT_THEME
         self.status='Запуск программы…';self.ready=False
         app=QApplication.instance();self.target_screen=app.screenAt(QCursor.pos()) or app.primaryScreen()
         self.setWindowTitle('SignalLab — запуск');self.setAccessibleName('Загрузка SignalLab');self.render_card()

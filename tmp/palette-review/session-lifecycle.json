@@ -1,0 +1,191 @@
+{
+  "version": "pdu-lifecycle-v1",
+  "states": {
+    "ORPHANED": 1,
+    "ACTIVE": 1
+  },
+  "total": 2,
+  "remaining_contexts": 5,
+  "pending_deregistrations": 0,
+  "transitions": {
+    "ESTABLISHING": 2,
+    "ACTIVE": 2,
+    "RELEASING": 1,
+    "ORPHANED": 2,
+    "RECONCILING": 1
+  },
+  "sessions": [
+    {
+      "owner": 1,
+      "pdu_session_id": 1,
+      "ue": [
+        "gnb",
+        0,
+        "00101"
+      ],
+      "state": "ORPHANED",
+      "created_ms": 100,
+      "updated_ms": 1517.702559999999,
+      "cleanup_attempts": 2,
+      "reason": "service_timeout",
+      "cleanup_pending": false,
+      "gnb": "gnb",
+      "subscriber_id": 0,
+      "amf": "amf",
+      "nf_selected": {
+        "NRF": "nrf",
+        "SMF": "smf",
+        "UDM": "udm",
+        "UDR": "udr",
+        "PCF": "pcf",
+        "UPF": "upf"
+      },
+      "dnn": "internet",
+      "snssai": "1-010203",
+      "context_nodes": [
+        "upf"
+      ]
+    },
+    {
+      "owner": 2,
+      "pdu_session_id": 2,
+      "ue": [
+        "gnb",
+        0,
+        "00101"
+      ],
+      "state": "ACTIVE",
+      "created_ms": 300,
+      "updated_ms": 380.9019200000004,
+      "cleanup_attempts": 0,
+      "reason": null,
+      "gnb": "gnb",
+      "subscriber_id": 0,
+      "amf": "amf",
+      "nf_selected": {
+        "NRF": "nrf",
+        "SMF": "smf",
+        "UDM": "udm",
+        "UDR": "udr",
+        "PCF": "pcf",
+        "UPF": "upf"
+      },
+      "dnn": "internet",
+      "snssai": "1-010203",
+      "context_nodes": [
+        "amf",
+        "pcf",
+        "smf",
+        "upf"
+      ]
+    }
+  ],
+  "contexts": [
+    {
+      "node": "upf",
+      "owner": 1,
+      "pdu_session_id": 1,
+      "flags": [
+        "n4_session"
+      ],
+      "expires_ms": 300154.14288
+    },
+    {
+      "node": "pcf",
+      "owner": 2,
+      "pdu_session_id": 2,
+      "flags": [
+        "policy_active"
+      ],
+      "expires_ms": 300344.28645333333
+    },
+    {
+      "node": "upf",
+      "owner": 2,
+      "pdu_session_id": 2,
+      "flags": [
+        "n4_session"
+      ],
+      "expires_ms": 300350.14288
+    },
+    {
+      "node": "smf",
+      "owner": 2,
+      "pdu_session_id": 2,
+      "flags": [
+        "sm_context"
+      ],
+      "expires_ms": 300352.36586666666
+    },
+    {
+      "node": "amf",
+      "owner": 2,
+      "pdu_session_id": 2,
+      "flags": [
+        "pdu_active"
+      ],
+      "expires_ms": 300376.6789333333
+    }
+  ],
+  "events": [
+    {
+      "time": 0.1,
+      "procedure_id": 1,
+      "pdu_session_id": 1,
+      "state": "ESTABLISHING",
+      "reason": null
+    },
+    {
+      "time": 0.18490191999999991,
+      "procedure_id": 1,
+      "pdu_session_id": 1,
+      "state": "ACTIVE",
+      "reason": null
+    },
+    {
+      "time": 0.3,
+      "procedure_id": 2,
+      "pdu_session_id": 2,
+      "state": "ESTABLISHING",
+      "reason": null
+    },
+    {
+      "time": 0.3809019200000004,
+      "procedure_id": 2,
+      "pdu_session_id": 2,
+      "state": "ACTIVE",
+      "reason": null
+    },
+    {
+      "time": 1.1849019199999997,
+      "procedure_id": 1,
+      "pdu_session_id": 1,
+      "state": "RELEASING",
+      "reason": "session_lifetime"
+    },
+    {
+      "time": 1.2930353599999995,
+      "procedure_id": 1,
+      "pdu_session_id": 1,
+      "state": "ORPHANED",
+      "reason": "service_timeout"
+    },
+    {
+      "time": 1.3930353599999996,
+      "procedure_id": 1,
+      "pdu_session_id": 1,
+      "state": "RECONCILING",
+      "reason": null
+    },
+    {
+      "time": 1.5177025599999991,
+      "procedure_id": 1,
+      "pdu_session_id": 1,
+      "state": "ORPHANED",
+      "reason": "service_timeout"
+    }
+  ],
+  "event_count": 8,
+  "events_truncated": false,
+  "session_sampled": false
+}

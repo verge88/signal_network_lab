@@ -93,8 +93,11 @@ class NetworkView(QGraphicsView):
         self.setAccessibleName('Редактор топологии сигнальной сети')
         self.setMouseTracking(True);self.viewport().setMouseTracking(True)
         self.scene_model.selectionChanged.connect(self.selection)
-        self.first_fit=True;self.fit_mode=True
+        self.first_fit=True;self.fit_mode=True;self.pan_position=None;self.pan_button=None
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     def set_project(self,p,selected=None,stats=None):
+        center=self.mapToScene(self.viewport().rect().center())
         self.set_connection_mode(False)
         self.loading=True;self.scene_model.clear();self.node_items={};self.edge_items={}
         for n in p['nodes']:
@@ -103,6 +106,8 @@ class NetworkView(QGraphicsView):
             item=EdgeItem(l,self.node_items[l['source']],self.node_items[l['target']]);self.scene_model.addItem(item);self.edge_items[l['id']]=item
         bounds=self.scene_model.itemsBoundingRect().adjusted(-80,-80,80,80)
         self.scene_model.setSceneRect(bounds)
+        self.setSceneRect(self.sceneRect().united(bounds))
+        if not self.fit_mode:self.centerOn(center)
         if selected:
             kind,rid=selected;item=(self.node_items if kind=='node' else self.edge_items).get(rid)
             if item:item.setSelected(True)
@@ -122,13 +127,37 @@ class NetworkView(QGraphicsView):
     def fit(self):
         if not isValid(self) or not isValid(self.scene_model):return
         self.fit_mode=True
+        self.setSceneRect(self.scene_model.sceneRect())
         self.fitInView(self.scene_model.itemsBoundingRect().adjusted(-45,-45,45,45),Qt.AspectRatioMode.KeepAspectRatio)
     def resizeEvent(self,event):
         super().resizeEvent(event)
         if self.fit_mode:QTimer.singleShot(0,self.fit)
+    def center_view(self,center):
+        visible=self.mapToScene(self.viewport().rect()).boundingRect();visible.moveCenter(center)
+        margin=max(visible.width(),visible.height())
+        self.setSceneRect(self.sceneRect().united(visible.adjusted(-margin,-margin,margin,margin)))
+        self.centerOn(center)
+    def pan_view(self,delta):
+        if delta.isNull():return
+        self.fit_mode=False;inverse=self.transform().inverted()[0]
+        offset=inverse.map(QPointF(delta))-inverse.map(QPointF())
+        self.center_view(self.mapToScene(self.viewport().rect().center())-offset)
     def wheelEvent(self,event):
-        self.fit_mode=False;scale=self.transform().m11();factor=1.15 if event.angleDelta().y()>0 else 1/1.15
-        if .015<scale*factor<3.5:self.scale(factor,factor)
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            steps=event.angleDelta().y()/120 if event.angleDelta().y() else event.pixelDelta().y()/120
+            if steps:
+                self.fit_mode=False;point=event.position().toPoint();before=self.mapToScene(point);scale=self.transform().m11()
+                zoom=max(.015,min(3.5,scale*1.15**max(-50,min(50,steps))))
+                anchor=self.transformationAnchor();self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
+                self.scale(zoom/scale,zoom/scale)
+                self.center_view(self.mapToScene(self.viewport().rect().center())+before-self.mapToScene(point))
+                self.setTransformationAnchor(anchor)
+        else:
+            delta=QPointF(event.pixelDelta())
+            if delta.isNull():delta=QPointF(event.angleDelta())*(60/120)
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier and not delta.x():delta=QPointF(delta.y(),0)
+            self.pan_view(delta)
+        if self.connection_source:self.update_connection(event.position().toPoint())
         event.accept()
     def node_at(self,point):
         return next((item for item in self.items(point) if isinstance(item,NodeItem)),None)
@@ -170,6 +199,8 @@ class NetworkView(QGraphicsView):
             self.connection_hint.emit('Задайте параметры нового канала.');self.connection_requested.emit(source,destination)
     def mousePressEvent(self,event):
         point=event.position().toPoint()
+        if event.button()==Qt.MouseButton.MiddleButton or (event.button()==Qt.MouseButton.LeftButton and self.panning):
+            self.setFocus();self.pan_position=event.position();self.pan_button=event.button();self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor);event.accept();return
         if event.button()==Qt.MouseButton.RightButton and (self.connection_mode or self.connection_source):
             self.set_connection_mode(False);event.accept();return
         if event.button()==Qt.MouseButton.LeftButton and not self.panning:
@@ -184,6 +215,8 @@ class NetworkView(QGraphicsView):
                 self.begin_connection(node,point,'port');event.accept();return
         super().mousePressEvent(event)
     def mouseMoveEvent(self,event):
+        if self.pan_position is not None:
+            self.pan_view(event.position()-self.pan_position);self.pan_position=event.position();event.accept();return
         if self.connection_source:
             self.update_connection(event.position().toPoint());event.accept();return
         if not self.panning:
@@ -192,6 +225,10 @@ class NetworkView(QGraphicsView):
             self.viewport().setCursor(Qt.CursorShape.CrossCursor if self.connection_mode or connector else Qt.CursorShape.ArrowCursor)
         super().mouseMoveEvent(event)
     def mouseReleaseEvent(self,event):
+        if event.button()==self.pan_button:
+            self.pan_position=None;self.pan_button=None;self.viewport().setCursor(Qt.CursorShape.OpenHandCursor if self.panning else Qt.CursorShape.CrossCursor if self.connection_mode else Qt.CursorShape.ArrowCursor)
+            if self.connection_source:self.update_connection(event.position().toPoint())
+            event.accept();return
         if event.button()==Qt.MouseButton.LeftButton and self.connection_source:
             point=event.position().toPoint()
             if self.connection_kind=='port' or (point-self.connection_press).manhattanLength()>=QApplication.startDragDistance():self.finish_connection(self.node_at(point))
@@ -202,9 +239,9 @@ class NetworkView(QGraphicsView):
             event.accept();return True
         return super().event(event)
     def focusOutEvent(self,event):
-        self.set_connection_mode(False);self.panning=False;super().focusOutEvent(event)
+        self.set_connection_mode(False);self.panning=False;self.pan_position=None;self.pan_button=None;super().focusOutEvent(event)
     def hideEvent(self,event):
-        self.set_connection_mode(False);self.panning=False;super().hideEvent(event)
+        self.set_connection_mode(False);self.panning=False;self.pan_position=None;self.pan_button=None;super().hideEvent(event)
     def keyPressEvent(self,event):
         if event.key()==Qt.Key.Key_Escape and (self.connection_mode or self.connection_source):self.set_connection_mode(False);event.accept()
         elif event.key()==Qt.Key.Key_Delete:self.set_connection_mode(False);self.delete_requested.emit();event.accept()

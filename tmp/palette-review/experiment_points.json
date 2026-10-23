@@ -1,0 +1,48 @@
+{
+  "kind": "table",
+  "title": "Серия · сравнение точек",
+  "headers": [
+    "Точка · параметры",
+    "Повторов / остановка",
+    "p95, ms · [интервал]",
+    "Успешность · [интервал]",
+    "Завершения, /s · [интервал]",
+    "Требования"
+  ],
+  "rows": [
+    [
+      "1 · Нагрузка = 0.5",
+      "6 / лимит",
+      "87.918  [78.554; 97.283]",
+      "1  [0; 1]",
+      "0.45833  [0; 1.0143]",
+      "—"
+    ],
+    [
+      "2 · Нагрузка = 1",
+      "6 / лимит",
+      "91.674  [85.17; 98.178]",
+      "1  [0; 1]",
+      "0.9375  [0.38017; 1.4948]",
+      "—"
+    ]
+  ],
+  "series": [],
+  "incidents": [],
+  "x_label": "Время, s",
+  "y_label": "",
+  "metadata": {
+    "series_id": "fe10fd1f39c244e4",
+    "contract": "experiments-v1",
+    "inference": {
+      "unit": "independent seeded run",
+      "confidence": 0.95,
+      "alpha": 0.00833333333333334,
+      "correction": "Bonferroni over planned points × metrics × possible looks",
+      "latency_assumption": "Student t interval for mean run-p95 is approximate; not a pooled latency quantile",
+      "success_method": "two-sided empirical Bernstein for independent bounded run ratios"
+    }
+  },
+  "nodes": [],
+  "links": []
+}

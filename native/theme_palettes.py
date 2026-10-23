@@ -1,17 +1,19 @@
 """Shared, dependency-free colors for the main UI and early startup card."""
+DEFAULT_THEME='graphite'
+
 EDITOR_PALETTES={
-    'graphite':dict(name='Тёмная · Графит',bg='#1e1e1e',sidebar='#252526',panel='#252526',
-        raised='#333333',input='#3c3c3c',hover='#37373d',border='#454545',grid='#303031',
-        text='#d4d4d4',muted='#a6a6a6',disabled='#808080',accent='#007acc',
-        accent_text='#4fc1ff',accent_hover='#1177bb',on_accent='#ffffff',
-        selection='#094771',selection_text='#ffffff',blue='#569cd6',teal='#4ec9b0',
-        gold='#d7ba7d',orange='#ce9178',red='#f48771'),
-    'porcelain':dict(name='Светлая · Фарфор',bg='#ffffff',sidebar='#f3f3f3',panel='#f8f8f8',
-        raised='#e8e8e8',input='#ffffff',hover='#e4e6f1',border='#cecece',grid='#ededed',
-        text='#333333',muted='#616161',disabled='#767676',accent='#007acc',
-        accent_text='#005fb8',accent_hover='#006bb3',on_accent='#ffffff',
-        selection='#add6ff',selection_text='#333333',blue='#0451a5',teal='#267f74',
-        gold='#795e26',orange='#a31515',red='#cd3131'),
+    'graphite':dict(name='Тёмная · Графит',bg='#111827',sidebar='#0f1724',panel='#182232',
+        raised='#233044',input='#0f1928',hover='#2d3d53',border='#53657d',grid='#263449',
+        text='#e6edf7',muted='#a8b6ca',disabled='#718198',accent='#2563eb',
+        accent_text='#93b4ff',accent_hover='#1d4ed8',on_accent='#ffffff',
+        selection='#263f67',selection_text='#f1f6ff',blue='#86b5ff',teal='#59d6bb',
+        gold='#d9b982',orange='#ffca7a',red='#ff8f9b'),
+    'porcelain':dict(name='Светлая · Фарфор',bg='#f3f6fb',sidebar='#eaf0f7',panel='#ffffff',
+        raised='#e5ebf3',input='#ffffff',hover='#dce6f3',border='#8494aa',grid='#dde5ef',
+        text='#18263a',muted='#4b5f78',disabled='#6f7f94',accent='#245bd5',
+        accent_text='#1d4fb0',accent_hover='#1d4bb8',on_accent='#ffffff',
+        selection='#d9e7ff',selection_text='#163b74',blue='#255dad',teal='#087865',
+        gold='#816016',orange='#986000',red='#b52d43'),
 }
 PALETTE_LABELS={
     'bg':'Рабочая область','sidebar':'Боковое меню','panel':'Панели','raised':'Кнопки',
@@ -28,7 +30,7 @@ for role,colors in {
     'sidebar':'151a23',
     'panel':'191f29 171e28 1b2430 18222f 202c3b 1d2734 202a38 263447',
     'input':'131a24',
-    'raised':'212a36 232c39 2d3e4c 273342',
+    'raised':'212a36 232c39 2d3e4c 273342 1d2530',
     'hover':'202936 283444 2b3747 344354',
     'border':'2c3746 2a3443 28313e 344153 344255 2c3849 3a4c60 344659 3b4d63 3a4b60 536980 50637a 4b617c 2e3c4e 293342 39495b 456052',
     'grid':'243245 293546 2a3544',
