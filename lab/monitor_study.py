@@ -41,13 +41,16 @@ def generate(project,runs=12,progress=None,cancel=None,topology_variants=False):
     return storage.save('monitor_dataset',p.name+' · мониторинг',dict(schema=schema_spec(p.monitoring),rows=rows,provenance=provenance,metadata=dict(source='synthetic',runs=runs,rows=len(rows),positives=sum(r['label'] for r in rows))))
 
 
-def compare(dataset,algorithms=('random_forest','isolation_forest'),groups=None,seed=42,trees=120,progress=None,cancel=None,evaluation_mode='run',holdout_value=None):
+def compare(dataset,algorithms=('random_forest','isolation_forest'),groups=None,seed=42,trees=120,progress=None,cancel=None,evaluation_mode='run',holdout_value=None,parameters=None,contamination=.1):
     rows=dataset['rows'];spec=dataset['schema'];key='monitoring:'+spec['id']
     ml.input_matrix(rows,key,spec)
     defined=sorted({f['group'] for f in spec['definitions']})
     groups=defined if groups is None else groups
     if not set(groups)<=set(defined):raise ValueError('Неизвестная группа абляции')
-    if not algorithms or not set(algorithms)<={'random_forest','isolation_forest','logistic'}:raise ValueError('Выберите доступный алгоритм')
+    if not algorithms or not set(algorithms)<=set(ml.ALGORITHMS) or len(set(algorithms))!=len(algorithms):raise ValueError('Выберите доступные алгоритмы без повторений')
+    parameters=parameters or {}
+    if set(parameters)-set(algorithms):raise ValueError('Настройки относятся к невыбранной модели')
+    for algorithm in algorithms:ml.model_parameters(algorithm,parameters.get(algorithm),trees)
     variants=[('Полный набор',spec['features'])]+[(f'Без группы: {group}',[f['name'] for f in spec['definitions'] if f['group']!=group]) for group in groups]
     variants=[(name,features) for name,features in variants if features]
     models=[];split=None
@@ -55,7 +58,7 @@ def compare(dataset,algorithms=('random_forest','isolation_forest'),groups=None,
         for algorithm in algorithms:
             for variant,features in variants:
                 checkpoint(cancel)
-                result=ml.train(rows,algorithm,seed=seed,trees=trees,feature_set=key,custom_spec=spec,feature_names=features,fixed_split=split,evaluation_mode=evaluation_mode,holdout_value=holdout_value)
+                result=ml.train(rows,algorithm,seed=seed,trees=trees,feature_set=key,custom_spec=spec,feature_names=features,fixed_split=split,evaluation_mode=evaluation_mode,holdout_value=holdout_value,parameters=parameters.get(algorithm),contamination=contamination)
                 models.append(dict(result,variant=variant))
                 if split is None:split={k:v['runs'] for k,v in result['split'].items()}
                 if progress:progress(int(len(models)*100/(len(algorithms)*len(variants))))

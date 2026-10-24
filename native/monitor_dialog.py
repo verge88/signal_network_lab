@@ -3,13 +3,14 @@ from copy import deepcopy
 import json
 from pathlib import Path
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QDialog,QWidget,QVBoxLayout,QFormLayout,QTabWidget,QScrollArea,
+from PySide6.QtWidgets import (QDialog,QWidget,QVBoxLayout,QFormLayout,QTabWidget,QScrollArea,QGridLayout,
     QLineEdit,QCheckBox,QFileDialog,QTableWidgetItem,QAbstractItemView,QHeaderView)
-from lab import storage,monitor_study
+from lab import storage,monitor_study,ml
 from lab.schema import Project,Monitoring
 from lab.monitoring import default_features
 from lab.monitor_expressions import OBSERVABLES
 from .widgets import label,button,row,table,populate,combo,spin,Chart
+from .ml_options import ModelOptionsDialog
 
 
 class MonitorDialog(QDialog):
@@ -37,14 +38,15 @@ class MonitorDialog(QDialog):
         self.faults=table(['Участник','Начало, s','Длительность, s','Искажение','Множитель','Задержка, ms']);sl.addWidget(self.faults,1)
         sl.addLayout(row(button('Добавить искажение',lambda:parent.call(self.add_fault),'plus'),button('Удалить',lambda:self.remove(self.faults),'trash'),stretch=True));self.tabs.addTab(faults_page,'Искажения отчётов')
         experiment=QWidget();el=QVBoxLayout(experiment)
-        self.runs=spin(12,6,24);self.seed=spin(42,0,2147483647);self.trees=spin(120,20,300)
+        self.runs=spin(12,6,24);self.seed=spin(42,0,2147483647);self.trees=spin(120,10,2000);self.model_parameters={}
         el.addLayout(row('Независимых прогонов',self.runs,'Seed обучения',self.seed,'Деревьев',self.trees,stretch=True))
         self.topology_variants=QCheckBox('Три варианта связности: исходная сеть и 1 / 2 дополнительных канала');el.addWidget(self.topology_variants)
         self.algorithms={}
-        line=row(stretch=False)
-        for key,title in [('random_forest','Random Forest'),('isolation_forest','Isolation Forest'),('logistic','Logistic Regression')]:
-            check=QCheckBox(title);check.setChecked(key!='logistic');self.algorithms[key]=check;line.addWidget(check)
-        el.addLayout(line)
+        model_area=QScrollArea();model_area.setWidgetResizable(True);model_area.setMinimumHeight(130);model_area.setMaximumHeight(190);model_list=QWidget();model_grid=QGridLayout(model_list)
+        for index,(key,meta) in enumerate(ml.ALGORITHMS.items()):
+            check=QCheckBox(meta['title']);check.setToolTip(meta['description']);check.setChecked(key in ('random_forest','isolation_forest'));self.algorithms[key]=check;model_grid.addWidget(check,index//3,index%3)
+        model_area.setWidget(model_list);el.addWidget(model_area)
+        el.addLayout(row(button('Выбрать все',lambda:self.select_algorithms(True)),button('Снять выбор',lambda:self.select_algorithms(False)),button('Настроить модели…',lambda:parent.call(self.configure_models),'settings'),stretch=True))
         self.evaluation=combo([('run','Независимые прогоны'),('topology','Новая топология'),('fault','Новый тип воздействия')]);self.holdout=QLineEdit();self.holdout.setPlaceholderText('ID топологии / тип; пусто — автоматический выбор')
         el.addLayout(row('Итоговая проверка',self.evaluation,'Только в test',self.holdout))
         self.data_button=button('Сформировать датасет',lambda:parent.call(self.generate),'plus',True)
@@ -128,11 +130,20 @@ class MonitorDialog(QDialog):
         populate(self.costs,[[r['run_id'],r['counts'].get('reports',0),r['counts'].get('timeouts',0),r['wire_bytes'],r['summary']['latency_p95'],r['summary']['delivery_ratio']] for r in data.get('provenance',[])])
     def compare(self):
         if not self.dataset:raise ValueError('Сформируйте или откройте датасет')
-        data=self.dataset;algorithms=[k for k,w in self.algorithms.items() if w.isChecked()];seed=self.seed.value();trees=self.trees.value();mode=self.evaluation.currentData();held=self.holdout.text().strip() or None
-        self.owner.start_job('Сравнение детекторов и абляция',lambda progress,cancel:monitor_study.compare(data,algorithms,seed=seed,trees=trees,progress=progress,cancel=cancel,evaluation_mode=mode,holdout_value=held),self.accept_study)
+        data=self.dataset;algorithms=[k for k,w in self.algorithms.items() if w.isChecked()];seed=self.seed.value();trees=self.trees.value();mode=self.evaluation.currentData();held=self.holdout.text().strip() or None;parameters={k:v for k,v in self.model_parameters.items() if k in algorithms}
+        self.owner.start_job('Сравнение детекторов и абляция',lambda progress,cancel:monitor_study.compare(data,algorithms,seed=seed,trees=trees,progress=progress,cancel=cancel,evaluation_mode=mode,holdout_value=held,parameters=parameters),self.accept_study)
+    def select_algorithms(self,checked):
+        for control in self.algorithms.values():control.setChecked(checked)
+    def configure_models(self):
+        keys=[k for k,w in self.algorithms.items() if w.isChecked()]
+        if not keys:raise ValueError('Выберите модели для сравнения')
+        dialog=ModelOptionsDialog(self,keys,{k:v for k,v in self.model_parameters.items() if k in keys},self.trees.value())
+        try:
+            if dialog.exec():self.model_parameters.update(dialog.result_config())
+        finally:dialog.deleteLater()
     def accept_study(self,record):
         self.record=record;models=record['models'];fmt=lambda x:'—' if x is None else f'{x:.5g}'
-        populate(self.results,[[m['algorithm']+' / '+m['variant'],len(m['features']),fmt(m['metrics']['f1']),fmt(m['metrics']['pr_auc']),fmt(m['metrics']['false_positive_rate']),str(m['operational']['detected'])+' / '+str(m['operational']['episodes']),fmt(m['operational']['false_alarms_per_hour']),fmt(m['operational']['delay_mean_s'])] for m in models])
+        populate(self.results,[[m.get('algorithm_title',m['algorithm'])+' / '+m['variant'],len(m['features']),fmt(m['metrics']['f1']),fmt(m['metrics']['pr_auc']),fmt(m['metrics']['false_positive_rate']),str(m['operational']['detected'])+' / '+str(m['operational']['episodes']),fmt(m['operational']['false_alarms_per_hour']),fmt(m['operational']['delay_mean_s'])] for m in models])
         self.chart.set_series([dict(name='F1',points=[(i+1,m['metrics']['f1']) for i,m in enumerate(models)])])
         self.summary.setText(str(len(models))+' вариантов. Одинаковые независимые части данных; порог настроен по validation. Ось X: номер варианта, Y: F1.');self.refresh_history();self.tabs.setCurrentIndex(4)
     def show_rows(self,rows):

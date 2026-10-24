@@ -1,0 +1,624 @@
+[PDF PAGE 1]
+ Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1 16
+УДК 004.056.5:004.8:621.396 
+ИЕРАРХИЧЕСКИЙ МЕТОД РАСПРЕДЕЛЁННОГО ОБНАРУЖЕНИЯ 
+КОМПРОМЕТАЦИИ И АТАК В СИГНАЛЬНЫХ СЕТЯХ DIAMETER  
+И. Л. Виноградова, д.т.н., профессор кафедры «Телекоммуникационные системы» УУНиТ, Уфа, Россия;  
+e-mail: vinogradova.il@ugatu.su  
+Н. Х. Садыков, аспирант кафедры «Вычислительная техника и инженерная кибернетика» УГНТУ, 
+Уфа, Россия;  
+orcid.org/0009-0007-0882-3537, e-mail: sadykov.niyaz2016@yandex.ru 
+Выполнена разработка метода распределённого мониторинга безопасности сигнальных сетей 
+Diameter в сети LTE. Целью работы является повышение информационной безопасности находя-
+щихся в эксплуатации сетей LTE за счёт обнаружения атак на сигнализацию Diameter с использова-
+нием иерархической архитектуры «ведущий –ведомый» и интеллектуального анализа аномалий. Для 
+достижения поставленной цели решены следующие задачи: обоснован выбор иерархической архи-
+тектуры мониторинга с двухуровневым извлечением признаков; разработаны каскадная и ансамбле-
+вая модели обнаружения; проведена экспериментальная оценка эффе ктивности обнаружения пяти 
+типов атак на Diameter. Причиной актуальности поставленной задачи является недостаточная 
+защищённость в сетях LTE существующих механизмов (межсетевых экранов сигнализации), а так-
+же принципиальная неспособность централизованных по дходов к мониторингу обнаруживать ком-
+прометацию внутренних узлов сети. Показано, что без сопоставления поведения узла с медианными 
+значениями по его зоне компрометированный узел неотличим от нормального. Предложена двух-
+уровневая система извлечения признако в – 35 наблюдаемых на уровне ведомых узлов и 21 признак 
+управляющего блока с зональной контекстуализацией на уровне ведущих. На основе имитационной 
+модели из 17 узлов (86 400 записей) мета -ансамбль достигает F1  = 0,9934 при FPR  = 0,0001; кас-
+кадный детектор  обеспечивает 99,4  % обнаружения компрометации. Абляционное исследование 
+подтвердило, что удаление признаков иерархической архитектуры снижает обнаружение компро-
+метации с 98,5  % до 2,2  %. Сравнение контролируемых и неконтролируемых моделей по достовер-
+ности обнаружения компрометации не представляется корректным из -за использования в них 
+принципиально разных алгоритмов с разными характеристиками входных данных. 
+Ключевые слова: протокол Diameter, LTE, обнаружение аномалий, отказ в обслуживании, ком-
+прометация узла, иерархическая архитектура, мета-ансамбль, межсетевой экран сигнализации. 
+DOI: 10.21667/1995-4565-2026-96-1-16-29 
+Введение 
+Сигнализация Diameter в сетях LTE создаёт потенциальную возможность угрозы инфор-
+мационной безопасности (ИБ). Результатом таких уг роз могут быть отказ в обслуживании, 
+утечка данных абонента, отслеживание местоположения и перехват SMS [1, 2]. Базовый про-
+токол Diameter определён в RFC 6733 и обеспечивает функции аутентификации, авторизации 
+и учёта (AAA). В сетях LTE он используется на интерфейсах S6a, Gx, Rx, S13, Cx/Dx [3 -5]. 
+Эти сообщения относятся к прикладному уровню эталонной модели OSI, а транспортной 
+средой служит протокол SCTP или TCP. 
+В работе [6] на основе опросов операторов сетей связи общего пользования отмечена 
+практически полная уязвимость сетей LTE к угрозам нарушения информационной безопас-
+ности, реализуемым нарушителем через протокол Diameter. На это же указано в работах [7 -
+10], в которых приведены результаты независимых испытаний на проникновение. Не исклю-
+чено, что в оборудовании ряда операторов ССОП сигнальные межсетевые экраны вообще не 
+предусмотрены. Это отмечено в работах [11 -13] регулирующих органов, а также в отрасле-
+вых обзорах [14-16], в которых указывается на сохраняющийся уровень угроз информацион-
+
+[PDF PAGE 2]
+Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1  17
+ной безопасности и серьезные последствия их реализации, выражающиеся в росте экономи-
+ческого ущерба ССОП от телекоммуникационного мошенничества. Эти данные определяют 
+актуальность задачи защиты сигнализации Diameter. 
+Доступ к единственному скомпрометированному оператору мо жет причинить серьёзный 
+ущерб вследствие некорректной модели доверия в межоператорском взаимодействии [9, 17, 
+18]. Как отмечено в работе [19], атаки на сигнализацию могут маскироваться под легитим-
+ные сетевые операции, что требует решений, обеспечивающих ви димость сложных угроз и 
+снижение числа ложных срабатываний. 
+В связи с этим остро стоит задача разработки распределённого метода обнаружения атак 
+и компрометации узлов в сетях Diameter, обеспечивающего зональную контекстуализацию 
+поведения каждого узла сети. 
+Постановка задачи.  Существующие подходы к защите Diameter -сигнализации пред-
+ставлены нормативными документами [20-22], промышленными межсетевыми экранами [23-
+25] и академическими исследованиями [17, 26 -31]. Их анализ показывает, что большинство 
+работ адресовано протоколу SS7, промышленные решения остаются закрытыми, а распреде-
+лённый характер Diameter-сети и возможность компрометации внутренних узлов в этих под-
+ходах не учитываются. Цель работы – повышение информационной безопасности находя-
+щихся в эксплуатац ии сетей LTE за счёт обнаружения атак на сигнализацию Diameter с ис-
+пользованием иерархической архитектуры и интеллектуального анализа аномалий. 
+Теоретические исследования 
+Архитектура протокола Diameter и его уязвимости.  Протокол Diameter в сетях LTE 
+работает поверх протоколов SCTP/TCP и включает в себя узлы MME, HSS, DRA, DEA, 
+PCRF [3, 6, 22, 32]. Транзитный (hop -by-hop) характер протокола и опциональность исполь-
+зования механизмов защиты TLS/IPsec делают его уязвимым к угрозам информационной 
+безопасности при межоператорском взаимодействии [10, 24]. В настоящей работе при реше-
+нии будем исходить из необходимости моделирования пяти классов атак согласно рекомен-
+дации GSMA FS.19 и работам [3, 6, 17, 24, 25]: отслеживание местоположения абонента; пе-
+рехват сообщени й SMS и пользовательских данных; сигнальный отказ в обслуживании 
+(DoS); мошенничество посредством нелегитимной манипуляции профилем абонента (с по-
+мощью сообщения IDR); компрометация узла сети. Реализация этих атак осуществляется че-
+рез нелегитимное использо вание нарушителем команд AIR, ULR, CLR, IDR, PUR, RSR про-
+токола Diameter. В работе [9] подтверждена практически 100% -ная успешность таких атак в 
+действующих сетях операторов связи. 
+Экспериментальные исследования 
+Предлагаемая иерархическая архитектура монит оринга. Сигнальная сеть Diameter 
+представляет собой распределённую систему. Каждый узел обладает уникальным «видени-
+ем» происходящего. Централизованный мониторинг сопряжён с высокой нагрузкой на цен-
+тральный узел, задержками при передаче телеметрии и возникновением единой точки отказа. 
+При решении задачи выбора архитектуры мониторинга исходим из необходимости зональ-
+ной контекстуализации, при которой поведение каждого узла оценивается не изолированно, 
+а в сравнении с узлами его зоны. 
+Предлагаемая архитектура основана на принципе «ведущий-ведомый» (master-slave). Ве-
+домые узлы выполняют первичный сбор и предварительную агрегацию признаков. Ведущие 
+узлы осуществляют интеллектуальный анализ агрегированных данных и принятие решений. 
+Данный подход позволяет снизить о бъём передаваемой телеметрии, обеспечить масштаби-
+руемость, реализовать зональную контекстуализацию, сохранить устойчивость при выходе 
+из строя отдельных компонентов (рисунок 1). 
+Уровень ведомых узлов. Каждый ведомый узел оснащается программным модулем мо-
+ниторинга, который на каждом временном интервале Δt = 15 с вычисляет вектор из 35 
+наблюдаемых признаков. К объёмно -временным характеристикам относятся: общее число 
+
+[PDF PAGE 3]
+ Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1 18
+сообщений, соотношение входящих и исходящих сообщений, дисперсия, автокорреляция, 
+энтропия рас пределения типов. К профилю интерфейса S6a относятся: доли команд AIR, 
+ULR, CLR, IDR, PUR, NOR, RSR, индекс Джини, доминантное отношение. К профилю ин-
+терфейса Gx – доля сообщений и соотношения CCR_I, CCR_U, CCR_T, RAR. Характеристи-
+ки одноранговых соединени й включают число связей, коэффициент вариации, долю между-
+народного трафика. Индикатор целостности – доля сообщений, не прошедших проверку. 
+Уровень ведущих узлов. Ведущие узлы назначаются из числа DRA, которые обладают гло-
+бальным видением трафика в своей зоне. На этом уровне формируется 21 дополнительный при-
+знак управляющего блока. Рассмотрим несколько примеров таких признаков: зональные откло-
+нения ключевых показателей каждого ведомого узла от медианы по зоне (dev_io_ratio_vs_zone, 
+dev_integrity_fail_rate_vs_zone); ранговые характеристики (zone_io_ratio_rank);  задержки и 
+джиттер (cu_processing_delay_ms, cu_response_time_jitter, cu_rtt_delay_ms); ошибки согласо-
+ванности (cu_consistency_error); устаревание данных (cu_staleness). Полный вектор призна-
+ков с произво дными составляет 56 характеристик. При этом важно учесть, что признаки 
+управляющего блока доступны только в иерархической архитектуре и не могут быть сфор-
+мированы при централизованном подходе. 
+Модели обнаружения аномалий. На уровне ведущего узла реализуются несколько моде-
+лей обнаружения аномалий. Дифференцированный подход к обнаружению отдельно по каж-
+дому типу атак имеет преимущества в отношении получения более достоверных результатов. 
+ 
+Рисунок 1 – Предлагаемая иерархическая архитектура мониторинга:  
+1 – блок неконтролируемых моделей; 2 – блок контролируемых моделей;  
+3 – каскадный детектор; 4 – специализированный ансамбль; 5 – мета-ансамбль;  
+6 – поле итогового решения классификатора; 7 – ведущий узел DRA-0; 8 – канал зональной 
+контекстуализации; 9 – ведущий узел DRA-1; 10 – ведомые узлы зоны 0;  
+11 – ведомые узлы зоны 1; сплошные стрелки – поток 35 признаков с интервалом Δt = 15 с; 
+штриховая линия – синхронизация ведущих узлов; вертикальная стрелка – передача итогового 
+вектора из 56 признаков в блок интеллектуального анализа 
+Figure 1 – Proposed hierarchical monitoring architecture: 1 – unsupervised models block;  
+2 – supervised models block; 3 – cascade detector; 4 – specialized ensemble; 5 – meta-ensemble; 
+6 – final decision block; 7 – master node DRA-0; 8 – zonal contextualization channel; 9 – master node 
+DRA-1; 10 – slave nodes of zone 0; 11 – slave nodes of zone 1; solid arrows indicate the flow  
+of 35 features at intervals of Δt = 15 s; dashed line – master nodes synchronization;  
+vertical arrow – transmission of final 56-feature vector to intelligent analysis module 
+
+
+[PDF PAGE 4]
+Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1  19
+Базовые неконтролируемые и полуконтролируемые модели включают: Isolation Forest [33], 
+One-Class SVM [34], автокодировщик (AE), вариационный автокодировщик (VAE), LSTM -
+автокодировщик, Tempora l-Attention-AE [31]. Контролируемые модели включают Random 
+Forest [35] и Gradient Boosting [36]. Две из них, кроме данных мониторинга, используют ма-
+тематические аппараты – ансамблевые и каскадные методы. 
+Каскадный детектор компрометации (Cascade) представл яет двухступенчатую архитек-
+туру. На первой ступени общий классификатор Random Forest выявляет аномалии по полно-
+му вектору признаков. На второй ступени узлы, классифицированные как аномальные, ана-
+лизируются специализированными классификаторами, обученными н а подмножестве из 20 
+признаков управляющего блока. Это может положительно отразиться на достоверности об-
+наружения компрометации узлов – наиболее трудно выявляемого типа атак. 
+Специализированный ансамбль реализует подход «разделяй и властвуй». Набор призна-
+ков разбивается на тематические подгруппы (s6a_profile, gx_profile, volume_timing, 
+control_unit, international, baseline_deviation, compromise_indicators); для каждой обучается 
+отдельный классификатор. 
+Мета-ансамбль обучается на верхнем уровне, принимая на вход нормализованные пред-
+сказания семи моделей (Isolation Forest, One-Class SVM, Autoencoder, VAE, каскадный детек-
+тор, Random Forest, Gradient Boosting) и формируя итоговое решение. Последовательные мо-
+дели (LSTM -Autoencoder, Temporal -Attention-AE) не включ ены в мета -ансамбль из -за раз-
+личной размерности входных данных. 
+Соотнесение моделируемых атак с угрозами нормативных документов.  Моделируе-
+мые атаки соотнесены с угрозами БДУ ФСТЭК России (УБИ.116, УБИ.130, УБИ.131, 
+УБИ.140) [37] и требованиями ГОСТ Р 52448 -2005 (п. 5.1, 5.6, 5.12) [38] и ГОСТ Р 53110 -
+2008 (п. 10.3.3, 11.4) [39] к защите сведений об абонентах, регистрации событий ИБ и мони-
+торингу сигнальных сетей. 
+Имитационная модель. Для экспериментальной оценки предлагаемого метода разрабо-
+тана имитационная модель. На рисунке 2 приведена её схема. Модель включает 17 узлов: 3 
+DRA (из них 2 назначены ведущими), 2 DEA, 2 HSS, 4 MME, 2 PCRF, 2 S -GW и 2 P-GW. Уз-
+лы распределены по двум зонам. При этом важно учесть, какой зоне принадлежит каждый 
+узел, – от этого зависит формирование признаков управляющего блока. 
+ 
+Рисунок 2 – Схема имитационной модели: Обозначения: сплошные стрелки – потоки  
+телеметрии (от ведомого к ведущему) и управления (от ведущего к ведомому);  
+пунктирная линия – канал синхронизации между ведущими узлами 
+Figure 2 – Simulation model diagram: Notes: solid arrows – telemetry (slave to master)  
+and control (master to slave) flows; dashed line – synchronization channel  
+between master nodes 
+
+
+[PDF PAGE 5]
+ Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1 20
+Моделирование охватывает 24 ч с дискретизацией Δt = 15 с (5760 интервалов на узел). Об-
+щий объём данных составляет 86 400 записей. Нормальный трафик генерируется в соответствии 
+со статистическими профилями типового поведения узлов LTE [3, 6]. Учтены суточные колеба-
+ния нагрузки. На фоне нормального трафика моделируют ся 10 атакующих событий и 5 нор-
+мальных всплесков (последние – для проверки устойчивости к ложным срабатываниям). 
+Рассмотрим распределение аномальных записей по типам атак на каждой из двух зон 
+моделируемой сети. Из 86 400 записей 3670 (4,25  %) являются ано мальными. Компромета-
+ция узла – 3000 записей (81,7 % от всех аномалий). Эта атака моделируется как постепенное 
+изменение поведения скомпрометированного узла и является наиболее трудно обнаруживае-
+мой. Мошенничество через IDR – 260 записей (7,1  %). Перехват S MS/данных – 200 (5,5 %). 
+Сигнальный DoS – 160 (4,4 %). Отслеживание местоположения – 50 (1,4 %). 
+Примем в качестве примера следующие параметры разделения данных: обучающая вы-
+борка – 60 %, валидационная – 15 %, тестовая – 25 %. Пропорции аномалий сохранены во 
+всех выборках. 
+Общая эффективность моделей.  Результаты оценки на тестовой выборке приведены в 
+таблице 1. 
+Таблица 1 – Сводные результаты оценки моделей обнаружения аномалий 
+Table 1 – Summary evaluation results of anomaly detection models 
+Модель AUC-ROC AUC-PR F1 FPR 
+Isolation Forest 0,9411 0,3914 0,3849 0,0906 
+One-Class SVM 0,9133 0,3853 0,3424 0,0909 
+Autoencoder 0,9466 0,4838 0,4355 0,0653 
+VAE 0,9482 0,3707 0,4278 0,1117 
+LSTM-Autoencoder 0,8717 0,1306 0,2354 0,2521 
+Temporal-Attention-AE 0,8562 0,1338 0,2517 0,2235 
+Random Forest 1,0000 0,9997 0,9918 0,0002 
+Gradient Boosting 0,9997 0,9751 0,9835 0,0004 
+Cascade 1,0000 0,9998 0,9929 0,0004 
+Meta-Ensemble 0,9962 0,9916 0,9934 0,0001 
+Разрыв между неконтролируемыми и контролируемыми подходами значителен. Автоко-
+дировщик – наилучшая неконтролируемая модель – достигает F1 всего 0,4355. Random 
+Forest: F1 0,9918. Мета -ансамбль: F1  = 0,9934, FPR  = 0,0001. Последнее значение соответ-
+ствует 3 ло жным срабатываниям на 20 683 нормальных записи, т.е. одному ложному тре-
+вожному событию на более чем 6894 нормальных состояния. 
+Обнаружение по типам атак.  Покажем в качестве примера значения полноты обнару-
+жения (Recall) для каждого типа атаки (таблица 2 и рисунки 3, 4). 
+Таблица 2 – Полнота обнаружения (Recall) по типам атак, % 
+Table 2 – Detection recall by attack type, % 
+Модель Мошенн. Отслежив. Компром. DoS Перехват 
+Isolation Forest 100,0 91,7 67,7 100,0 71,7 
+One-Class SVM 100,0 100,0 53,2 100,0 100,0 
+Autoencoder 100,0 100,0 60,6 100,0 100,0 
+VAE 100,0 100,0 94,6 100,0 100,0 
+Random Forest 100,0 100,0 98,5 100,0 100,0 
+Gradient Boosting 100,0 100,0 97,0 100,0 100,0 
+Cascade 100,0 100,0 99,4 100,0 100,0 
+Meta-Ensemble 100,0 100,0 98,8 100,0 100,0 
+Мошенничество и сигнальный DoS обнаруживаются всеми моделями с полнотой 100  %. 
+Это объясняется характерным сигнатурным поведением: резкое увеличение доли сообщений 
+IDR или CLR/RSR/PUR. Принципиальное различие – в обнаружении компрометации узла. 
+One-Class SVM: 53,2  %. Autoencoder: 60,6  %. VAE: 94,6  %. Каскадный детектор: 99,4  %. 
+Причина этого различия – в доступе каскадного детектора к признакам управляющего блока, 
+которые фиксируют отклонение поведения узла от медианы его зоны. 
+
+[PDF PAGE 6]
+Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1  21
+ 
+Рисунок 3 – Кривые точность-полнота 
+Figure 3 – Precision-Recall curves 
+ 
+Рисунок 4 – Кривые обучения 
+Figure 4 – Learning curves 
+
+
+[PDF PAGE 7]
+ Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1 22
+Значимость признаков и вклад иерархической архитектуры. Анализ значимости по моде-
+ли Random Forest показал следующее. Суммарный вклад признаков, доступных только в 
+иерархической архитектуре (MS -признаки), – 74,0 %. Это неожиданно высокое значение. 
+Среди пяти наиболее важных признаков два формируются исключительно на уровне веду-
+щего узла: dev_integrity_fail_rate_vs_zone (5,8  %) и dev_io_ratio_vs_zone (5,5  %). Первое м е-
+сто – var_obs_inbound_outbound_ratio (16,0 %), т.е. временная динамика соотношения входя-
+щего и исходящего трафиков (рисунок 5). 
+ 
+Рисунок 5 – Значимость признаков по модели Random Forest 
+Figure 5 – Feature importance based on the Random Forest model 
+Абляционное исследование. Прежде чем сделать выводы о необходимости каждого ком-
+понента, рассмотрим результаты последовательного удаления групп признаков (таблица 3). 
+Таблица 3 – Результаты абляционного исследования 
+Table 3 – Ablation study results 
+Конфигурация AUC-ROC AUC-PR F1 Компром. (Recall) 
+RF (полная модель) 1,0000 0,9997 0,9918 98,5 % 
+RF без MS-признаков 0,9624 0,5627 0,3621 2,2 % 
+RF без временных признаков 0,9975 0,9624 0,9065 79,9 % 
+Cascade (полная модель) 1,0000 0,9998 0,9929 99,4 % 
+Cascade – только 1-я ступень 1,0000 0,9997 0,9918 98,5 % 
+ Удаление MS-признаков приводит к резкому падению показателей: обнаружение ком-
+прометации падает с 98,5 % до 2,2 %, F1 – с 0,9918 до 0,3621.  
+ Ущерб от удаления временных признаков менее выражен, однако значителен: обнару-
+жение компрометации снижается до 79,9 %. 
+ Вклад второй ступени каскадного детектора составляет улучшение с 98,5  % до 99,4  %. 
+Аналогичный по характеру, но меньший по абсолютному значению выигрыш. 
+Анализ специализированного ансамбля. Рассмотрим результа ты работы отдельных тема-
+тических блоков специализированного ансамбля. Значения полноты обнаружения для кон-
+кретных типов атак оцениваются по принятым метрикам, как это принято в описанных выше 
+экспериментах (таблица 4). 
+
+
+[PDF PAGE 8]
+Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1  23
+Таблица 4 – Результаты отдельных блоков специализированного ансамбля 
+Table 4 – Results of individual specialized ensemble blocks 
+Блок AUC-
+ROC F1 Мошенн. Отслежив. Компром. DoS Перехват 
+s6a_profile (14) 0,8002 0,2941 100 % 100 % 0,4 % 100 % 100 % 
+gx_profile (4) 0,7369 0,1708 100 % 58,3 % 85,1 % 0 % 41,7 % 
+control_unit (11) 0,8338 0,2941 0 % 0 % 96,7 % 52,7 % 6,7 % 
+compromise_ind. 
+(20) 
+0,9240 0,4160 3,1 % 100 % 84,1 % 100 % 81,7 % 
+ensemble_mean 0,9470 0,4115 93,8 % 91,7 % 61,4 % 100 % 96,7 % 
+На основании этих данных рассмотрим несколько примеров специализации блоков. 
+ Блок s6a_profile использует 14 признаков профиля интерфейса S6a. Обнаружение мо-
+шенничества, отслеживания местоположения, DoS и перехвата – 100 %. Обнаружение ком-
+прометации узла – 0,4 %. Причина – компрометированный узел не гене рирует аномальных 
+сообщений S6a; его поведение по данному интерфейсу остаётся в пределах нормы. 
+ Блок control_unit использует 11 признаков управляющего блока. Обнаружение компро-
+метации – 96,7 %. Обнаружение мошенничества – 0 %. Обнаружение отслеживания – 0 %. 
+Блок «видит» только зональные отклонения и задержки; он не имеет доступа к семантике 
+сообщений. 
+ Блок gx_profile использует 4 признака интерфейса Gx. Обнаружение DoS – 0 %. При 
+этом обнаружение компрометации – 85,1 %, что объясняется косвенным влиянием к омпро-
+метации на профиль политик. 
+Аналогичная по характеру, но иная по направленности специализация наблюдается у 
+блока compromise_indicators: при 20 признаках он обнаруживает 84,1  % компрометации, но 
+лишь 3,1 % мошенничества. 
+Примем во внимание результат п ростого усреднения предсказаний (ensemble_mean). Об-
+наружение компрометации при этом составляет 61,4 %. Это значение существенно ниже, чем 
+у блока control_unit (96,7  %), и свидетельствует о том, что наивная агрегация «размывает» 
+сигнал специализированных бл оков. Это может отрицательно отразиться на достоверности 
+результатов при использовании простого усреднения вместо обученного мета -клас-
+сификатора. 
+Матрицы ошибок. На основании состава значений метрик отдельных моделей эксперт-
+ным методом проведена оценка пр игодности каждой модели к промышленной эксплуатации 
+(рисунок 6). Примем в качестве примера следующие значения из матриц ошибок (тестовая 
+выборка: 21 600 записей, из них 917 аномальных, 20 683 нормальных). 
+Random Forest: 4 ложных тревоги, 11 пропусков. Каск адный детектор: 9 ложных тревог, 
+но лишь 4 пропуска – наименьшее значение среди всех моделей. Мета -ансамбль: 3 ложных 
+тревоги, 9 пропусков. При этом следует учесть, что 4 пропущенные аномалии каскадного де-
+тектора и 9 пропущенных аномалий мета-ансамбля относятся к разным записям. Выбор меж-
+ду этими моделями определяется приоритетами конкретной эксплуатируемой сети: миними-
+зация пропусков или минимизация ложных тревог. 
+Обсуждение результатов. Настоящая работа построена на анализе особенностей сигналь-
+ной сети Diameter и учёте этих особенностей при разработке метода обнаружения атак. Цен-
+тральным результатом является следующее: без зональной контекстуализации обнаружение 
+компрометации узла составляет 2,2 %. С зональной контекстуализацией – 98,5 %.  
+Природа этого яв ления заключается в том, что компрометированный узел продолжает 
+генерировать трафик, который по локальным признакам неотличим от нормального. Анома-
+лия проявляется только при сопоставлении показателей узла с медианными значениями по 
+его зоне. Данный результ ат имеет важное практическое значение. Существующие решения, 
+построенные на инспекции трафика в одной точке (брандмауэры сигнализации), принципи-
+
+[PDF PAGE 9]
+ Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1 24
+ально не имеют доступа к зональному контексту. Это даёт основание утверждать, что такие 
+решения могут быть неспособны обнаруживать компрометацию внутренних узлов сети. 
+Прямое количественное сравнение с существующими работами затруднено. Причина – 
+различия в наборах данных, протоколах, типах атак. В работе [26] достигнута точность 
+99,95 % на наборе из 7056 записей SS 7. Предлагаемый метод оперирует набором, в 12 раз 
+большим (86 400 записей), при 5 типах атак и достигает F1  = 0,9934. В работе [17] продемон-
+стрировано 100 % обнаружение для IDR, ULR/CLR и PUR на стенде с одним узлом; предла-
+гаемый метод достигает тех же 100  % и дополнительно обнаруживает компрометацию. 
+Сравнение контролируемых и неконтролируемых моделей по достоверности обнаружения 
+компрометации не представляется корректным из -за использования в них принципиально 
+разных алгоритмов с разными характеристиками входных данных. Однако качественное раз-
+личие – 53,2 – 94,6 % у неконтролируемых против 98,5 – 99,4 % у контролируемых – свиде-
+тельствует о преимуществе последних при наличии размеченных данных. 
+ 
+Рисунок 6 – Матрицы ошибок 
+Figure 6 – Confusion matrices 
+Ограничения метода. Валидация на данных реального оператора необходима; однако по-
+лучение таких данных не представляется возможным из-за конфиденциальности сигнального 
+трафика. Контролируемые модели зависят от разметки. Моделируется один оператор; рас-
+ширение на  роуминговый сценарий потребует механизмов федеративного обучения [40]. 
+Временная гранулярность Δt = 15 с может быть недостаточной. 
+Заключение 
+Разработка метода распределённого мониторинга безопасности сигнальных сетей 
+Diameter вызвана необходимостью прове дения работ по повышению ИБ находящихся в экс-
+
+
+[PDF PAGE 10]
+Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1  25
+плуатации сетей LTE. Актуальность задачи определяется недостаточной защищённостью 
+существующих механизмов и разработкой новых усовершенствованных механизмов обна-
+ружения атак на основе интеллектуального анализа. 
+Предложен метод на основе иерархической архитектуры «ведущий –ведомый». Метод 
+включает двухуровневую систему извлечения признаков: 35 на уровне ведомых узлов, 21 на 
+уровне ведущих. Каскадная архитектура обнаружения дополнена мета -ансамблем. Мета -
+ансамбль: F1 = 0,9934, FPR = 0,0001. Каскадный детектор: 99,4  % обнаружения компромета-
+ции. Удаление признаков иерархической архитектуры снижает обнаружение компрометации 
+с 98,5 % до 2,2 %. Суммарный вклад признаков ведущего уровня – 74,0 % суммарной важно-
+сти модели. 
+Прикладное значение результатов состоит в том, что метод может быть внедрён в суще-
+ствующие сигнальные сети LTE путём установки программных модулей мониторинга на ве-
+домые узлы и модулей интеллектуального анализа на DRA-маршрутизаторы. 
+Библиографический список 
+1. Fajardo V. Diameter Base Protocol: RFC 6733 / V. Fajardo, J. Arkko, J. Lou ghney, G. Zorn. IETF , 
+2012. URL: https://datatracker.ietf.org/doc/html/rfc6733 (дата обращения: 15.03.2026). 
+2. 3GPP TS 29.272. MME and SGSN related interfaces based on Diameter protocol (Release 17). 3GPP, 
+2022. URL: https://www.3gpp.org/DynaReport/29272.htm (дата обращения: 15.03.2026). 
+3. Kotte B. T. Analysis and Experimental Verification of Diameter Attacks in Long Term Evolution 
+Networks: магистерская диссертация / B.T. Kotte. Aalto University; KTH Royal Institute of Technology, 
+2016. – URL: https://www.diva -portal.org/smash/get/diva2:951619/FULLTEXT01.pdf ( дата обращения: 
+15.03.2026). 
+4. The Role of the Diameter Signaling Controller (DSC) in LTE and VoLTE / Diametriq. 2012. URL: 
+https://diametriq.com/wp-content/uploads/downloads/2012/05/The-Role-of-DSC-in-LTE-and-VoLTE.pdf (да-
+та обращения: 15.03.2026). 
+5. Cox C. An Introduction to LTE: LTE, LTE -Advanced, SAE and 4G Mobile Communications /  C. 
+Cox. – 2nd ed. – Chichester: John Wiley & Sons, 2014. 
+6. Signalling Security in Telecom SS7/Diameter/5G : EU Level Assessment of t he Current Situation / 
+ENISA. 2018. URL: https://www.enisa.europa.eu/sites/default/files/publications/Interconnect%20Security% 
+20SS7-Diameter.pdf (дата обращения: 15.03.2026). 
+7. 5G Security Issues / P ositive Technologies. 2019. URL: https://www.gsma.com/get-involved/gsma-
+membership/wp-content/uploads/2019/11/5G-Research_A4.pdf (дата обращения: 15.03.2026). 
+8. Holtmanns S. Mobile subscriber profile data privacy breach via 4G diameter int erconnection / S. 
+Holtmanns, I. Oliver, Y. Miché // Journal of ICT Standardization. 2018. Vol. 6. No. 3. P. 245-262. 
+9. Security Assessment of Diameter Netw orks / Positive Technologies. 2018. URL: https://sta-
+tic.ptsecurity.com/upload/corporate/ru-ru/analytics/Diameter-2018-rus.pdf (дата обращения: 19.03.2026). 
+10. Tu G.H. New security threats caused by IMS-based SMS service in 4G LTE networks / G. H. Tu, C. 
+Y. Li, C. Peng, Y. Li, S. Lu // Proceedings of the 2016 ACM SIGSAC Conference on Computer  and Com-
+munications Security. 2016. P. 1118-1130. 
+11. Public Safety and Homeland Security Bureau Requests Comment on Vulnerabilitie s in SS7 and Di-
+ameter Protocols : Public Noti ce DA -24-308A1 / FCC. 2024. URL: https://docs.fcc.gov/public/attach-
+ments/DA-24-308A1.pdf (дата обращения: 19.03.2026). 
+12. Letter from Ron Wyden, U.S. Senator, to Joseph Biden, President of the United States regarding SS7 
+and Diameter vulnerabilities. 2024. URL: https://www.wyden.senate.gov/imo/media/doc/wyden-phone-hac-
+king-letter-to-president-biden.pdf (дата обращения: 19.03.2026). 
+13. EFF to FCC: SS7 is Vulnerable, and Telecoms Must Acknowledge That / Electronic Frontier Foun-
+dation. 2024. URL: https://www.eff.org/deeplinks/2024/07/eff-fcc-ss7-vulnerable-and-telecoms-must-ack-
+nowledge (дата обращения: 19.03.2026). 
+14. Year in Review: Key Insights from the Global Signa ling Threat Landscape / Enea. 2025. URL: 
+https://www.enea.com/insights/year-in-review-key-insights-from-the-global-signaling-threat-landscape/ (да-
+та обращения: 19.03.2026). 
+15. Telecommunications fraud increa sed 12 % in 2023 equating to an estimated $38.95 billion lost to 
+fraud / CFCA. 2023. URL: https://cfca.org/telecommunications-fraud-increased-12-in-2023-equating-to-an-
+estimated-38-95-billion-lost-to-fraud/ (дата обращения: 19.03.2026). 
+
+[PDF PAGE 11]
+ Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1 26
+16. Global Fraud Loss Survey 2025 Report Published / CFCA. 2025. URL: https://cfca.org/global-fraud-
+loss-survey-2025-report-published/ (дата обращения: 19.03.2026). 
+17. Tan Z. Device-Centric Detection and Mitigation of Diameter Signaling Attacks against Mobile Core / 
+Z. Tan, B. Ding, Z. Zhang, Q. Li, Y. Guo, S. Lu // 2021 IEEE Conference on Communication s and Network 
+Security (CNS). IEEE, 2021. P. 29-37. 
+18. Measuring the Diameter – Protecting 4G Networks / En ea (AdaptiveMobile Security). 2018. URL: 
+https://www.enea.com/insights/measuring-the-diameter-protecting-4g-networks/ (дата обращения: 15.03.2026). 
+19. Signaling Security: Achieving Adaptive Security in the Signaling Network : white paper / G. Matefi , 
+M. Stief. Ericsson , 2022. URL: https://www.ericsson.com/en/reports-and-papers/white-papers/signaling-se-
+curity (дата обращения: 19.03.2026). 
+20. GSMA FS.19: Securing Diameter Protocol in M obile Networks / P1 Security. 2025. URL: 
+https://www.p1sec.com/blog/gsma-fs-19-strengthening-diameter-security-in-lte-and-5g-networks (дата об-
+ращения: 15.03.2026). 
+21. Recommendations to Mitigate Security Risks for Diam eter Networks / FCC CSRIC VI. 2018.  URL: 
+https://www.fcc.gov/sites/default/files/csric6report_recommendationstomitigateriskdiamterprotocol032018.pdf 
+(дата обращения: 15.03.2026). 
+22. Recommendation Q.3057:  Signalling requirements and architecture for interconnection between 
+trustable network entities / ITU-T. Geneva: ITU, 2020. 
+23. SS7, Diameter, GTP -C, and HTTP/2 Firewall / Enea. URL: https://www.enea.com/solutions/signa-
+ling-security/signaling-firewall/ss7-diameter-gtp-c-and-http-2-firewall/ (дата обращения: 15.03.2026). 
+24. Introduction to Diameter Security / Cellusys. 2018. URL: https://www.cellu-sys.com/2018/12/ 
+07/introduction-to-diameter-security/ (дата обращения: 15.03.2026). 
+25. Oracle Communica tions Diameter S ignaling Router : Featur e Guide, Release 8.2 / Oracle.  URL: 
+https://docs.oracle.com/cd/E88991_01/docs.82/DSR%20Release%208.2%20Feature%20Guide.pdf (дата об-
+ращения: 15.03.2026). 
+26. Afzal R. Rule-Based Anomaly Detection Model with Stateful Correlation Enhancing Mobile Net-
+work Security / R. Afzal, R. K. Murugesan // Intelligent Automation & Soft Computi ng. 2022.  Vol. 31 . 
+No. 3. P. 1825-1841. DOI: 10.32604/iasc.2022.020598. 
+27. Ullah K. SS7 Vulnerabilities – A Survey and Implementation of Machine Learning vs Rule Based  
+Filtering for Detection of SS7 Network Attacks / K.  Ullah, I. Rashid, H. Afzal, M.M. W. Iqbal, 
+Y.A. Bangash, H. Abbas // IEEE Communications Surveys & Tutorials. 2020. Vol. 22. No. 2. P. 1337-1371. 
+28. Guo Y. An empirical study of deep learning -based SS7 atta ck detection / Y. Guo, O. Ermis, Q. 
+Tang, H. Trang, A. De Oliveira // Information. 2023. Vol. 14. No. 9. Art. 509. DOI: 10.3390/info14090509. 
+29. Edozie E. Artificial intelligence advances in anomaly detection for telecom networks / E. Edozie, A. 
+N. Shuaibu, B. O. Sadiq, U. K. John // Ar tificial Intelligence Review. 2025. Vol. 58. No. 4. Art. 100. DOI: 
+10.1007/s10462-025-11108-x. 
+30. Legacy and Modern Protocols at Risk: SS7, Diameter, GTP, IMS & 5G Security Threats / P1 Securi-
+ty. 2025. URL: https://www.p1sec.com/blog/legacy-and-modern-protocols-at-risk-ss7-diameter-gtp-ims-5g-
+security-threats (дата обращения: 15.03.2026). 
+31. Sobrinho Á. Challenges and opportunities in mobile network security for vertical applications: A 
+survey / Á. Sobrinho, M. Vilarim, A. Barbosa, E. C. Gurjão, D. F. S. Santos [et al.] // ACM Computing Sur-
+veys. 2024. Vol. 57. No. 2. Art. 44. P. 1-36. DOI: 10.1145/3696446. 
+32. 3GPP TS 29.213. Policy and Charging Control signalling flows and Quality of Service (QoS) pa-
+rameter mapping (Release 18). 3GPP. 2024. URL: https://www.3gpp.org/DynaReport/29213.htm (дата об-
+ращения: 19.03.2026). 
+33. Liu F.T. Isolation Forest / F. T. Liu, K. M. Ting, Z.-H. Zhou // 2008 Eighth IEEE International Con-
+ference on Data Mining. IEEE. 2008. P. 413-422. 
+34. Schölkopf B. Estimating the Support of a High-Dimensional Distribution / B. Schölkopf, J. C. Platt, 
+J. Shawe-Taylor, A. J. Smola, R. C. Williamson // Neural Computation. 2001. Vol. 13. No. 7. P. 1443-1471. 
+35. Breiman L. Random forests // Machine learning. 2001. Т. 45. № 1. С. 5-32. 
+36. Friedman J. H. Greedy function approximation: a gradient boosting ma chine //Annals of statistics. 
+2001. С. 1189-1232. 
+37. Банк данных угроз безопасности информации / ФСТЭК России. – URL: https://bdu.fstec.ru/ 
+threat (дата обращения: 22.03.2026). 
+38. ГОСТ Р. 52448 -2005 З ащита информации. Обеспечение безопасности сетей э лектросвязи. 
+Общие положения. 2006. 
+
+[PDF PAGE 12]
+Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1  27
+39. ГОСТ Р. 53110-2008. Система обеспечения информационной безопасности сети связи общего 
+пользования // Паспорт организации связи по информационной безопасности. 2009. 
+40. McMahan B. Communication-Efficient Learning of Deep Networks from Decentralized Data / B. 
+McMahan, E. Moore, D. Ramage, S. Hampson, B. Agüera y Arcas // Proceedings of the 20th International 
+Conference on Artificial Intelligence and Statistics (AISTATS). PMLR, 2017. P. 1273-1282. 
+UDC 004.056.5:004.8:621.396 
+HIERARCHICAL METHOD FOR DISTRIBUTED DETECTION  
+OF COMPROMISE AND ATTACKS IN DIAMETER  
+SIGNALING NETWORKS 
+I. L. Vinogradova, Dr. in technical sciences, Professor, Department of Telecommunication Systems. Ufa 
+University of Science and Technology, Ufa, Russia;  
+e-mail: vinogradova.il@ugatu.su 
+N. Kh. Sadykov, Postgraduate Student, Department of Computer Engineering and Engineering Cybernetics. 
+Ufa State Petroleum Technological University, Ufa, Russia;  
+orcid.org/0009-0007-0882-3537, e-mail: sadykov.niyaz2016@yandex.ru 
+A method for distributed security monitoring of Diameter signaling networks in LTE has been devel-
+oped. The aim of this work is to enhance the information  security of operational LTE networks by detecting 
+attacks on Diameter signaling using a hierarchical master-slave architecture and intelligent anomaly analy-
+sis. To achieve this aim, the following objectives have been accomplished: the selection of a hiera rchical 
+monitoring architecture with two-level feature extraction has been justified; cascade and ensemble detection 
+models have been developed; an experimental evaluation of detection effectiveness for five types of Diameter 
+attacks has been conducted. Th e relevance of this task is driven by the insufficient protection provided by 
+existing mechanisms (signaling firewalls) in LTE networks, as well as the fundamental inability of c entral-
+ized monitoring approaches to detect the compromise of internal network nodes. Without comparing the be-
+havior of a node against the median values of its zone, a compromised node is shown to be indistingu ishable 
+from a normal one. A two-level feature extraction system is proposed – 35 observable features at slave node 
+level and 21 control unit features with zone -based contextualization at master level. Based on a simulation 
+model of 17 nodes (86,400 records), meta -ensemble achieves F1 = 0,9934 with FPR = 0,0001; cascade de-
+tector provides 99,4% compromise detection. An ablation study confirmed that removing hierarchical archi-
+tecture features reduces compromise detection from 98,5 % to 2,2 %. A direct comparison of supervised and 
+unsupervised models in terms of compromise detection accuracy is not considered valid due to the use  of 
+fundamentally different algorithms with different input data characteristics. 
+Keywords: Diameter protocol, LTE, anomaly detection, denial of service, node compromise, hierar-
+chical architecture, meta-ensemble, signaling firewall. 
+DOI: 10.21667/1995-4565-2026-96-1-16-29 
+References 
+1. Fajardo V. Diameter Base Protocol: RFC 6733 / V. Fajardo, J . Arkko, J. Loughney, G. Zorn.  IETF, 
+2012. URL: https://datatracker.ietf.org/doc/html/rfc6733 (data obrashcheniya: 15.03.2026).  
+2. 3GPP TS 29.272. MME and SGSN related interfaces based on Diameter protocol (Release 17). 3GPP. 
+2022. URL: https://www.3gpp.org/DynaReport/29272.htm (data obrashcheniya: 15.03.2026). 
+3. Kotte B.T. Analysis and Experimental Verification of Diameter Attacks in Long Term Evolution Net-
+works: Master’s degre e / B.T. Kotte. Aalto University ; KTH Royal Institute of Technology . 2016. URL: 
+https://www.diva-portal.org/smash/get/diva2:951619/FULLTEXT01.pdf (data obrashcheniya: 15.03.2026). 
+4. The Role of the Diameter Signaling Controller (DSC) in LTE and VoLTE. Diametriq. 2012. URL: 
+https://diametriq.com/wp-content/uploads/downloads/2012/05/The-Role-of-DSC-in-LTE-and-VoLTE.pdf ( da-
+ta obrashcheniya: 15.03.2026). 
+5. Cox C. An Introduction to LTE: LTE, LTE -Advanced, SAE and 4G Mobile Communications / C. Cox. 
+2nd ed. Chichester: John Wiley & Sons. 2014. 
+
+[PDF PAGE 13]
+ Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1 28
+6. Signalling Secu rity in Telecom SS7/Diameter/5G : EU Level Assessment of the Current Situation  / 
+ENISA. 2018. URL: https://www.enisa.europa.eu/sites/default/files/publications/Interconnect%20Security% 
+20SS7-Diameter.pdf (data obrashcheniya: 15.03.2026). 
+7. 5G Security Is sues / Positive Technologies . 2019. URL: https://www.gsma.com/get-involved/gsma-
+membership/wp-content/uploads/2019/11/5G-Research_A4.pdf (data obrashcheniya: 15.03.2026). 
+8. Holtmanns S. Mobile subscriber profile data pr ivacy breach via 4G diameter interconnection / S. 
+Holtmanns, I. Oliver, Y. Miché. Journal of ICT Standardization. 2018, vol. 6, no. 3, pp. 245-262. 
+9. Security Assessment of Diameter Networks.  Positive Technologies. 2018. URL: https://static.ptsecu-
+rity.com/upload/corporate/ru-ru/analytics/Diameter-2018-rus.pdf (data obrashcheniya: 19.03.2026). 
+10. Tu G.H. New security threats caused by IMS -based SMS service in 4G LTE networ ks / G.H. Tu, 
+C.Y. Li, C. Peng, Y. Li, S. Lu.  Proceedings of the 2016 ACM SIGSAC Conference  on Computer and Com-
+munications Security. 2016, pp. 1118-1130. 
+11. Public Safety and Homeland Security Bureau Requests Comment on Vulnerabilities in SS7 and Di-
+ameter Protocols: Public Notice DA -24-308A1 / FCC. 2024. URL: https://docs.fcc.gov/public/attachments/ 
+DA-24-308A1.pdf (data obrashcheniya: 19.03.2026). 
+12. Letter from Ron Wyden, U.S. Senator, to Joseph Biden, President of the United States regarding SS7 
+and Diameter vulnerabilities. 2024. URL: https://www.wyden.senate.gov/imo/media/doc/wyden-phone-hac-
+king-letter-to-president-biden.pdf (data obrashcheniya: 19.03.2026). 
+13. EFF to FCC: SS7 is Vulnerable, and Telecoms Must Acknowledge That / Electroni c Frontier Foun-
+dation. 2024. URL: https://www.eff.org/deeplinks/2024/07/eff-fcc-ss7-vulnerable-and-telecoms-must-ackno-
+wledge (data obrashcheniya: 19.03.2026). 
+14. Year in Review: Key Insights from the Global Signaling Thr eat Landscape.  Enea. 2025. URL: 
+https://www.enea.com/insights/year-in-review-key-insights-from-the-global-signaling-threat-landscape/ ( da-
+ta obrashcheniya: 19.03.2026). 
+15. Telecommunications fraud increased 12 % in 2023 equating to an estimated $38.95 billion lost to 
+fraud. CFCA. 2023. URL: https://cfca.org/telecommunications -fraud-increased-12-in-2023-equating-to-an-
+estimated-38-95-billion-lost-to-fraud/ (data obrashcheniya: 19.03.2026). 
+16. Global Fraud Loss Survey 2025 Report Publ ished. CFCA. 2025. URL: https://cfca.org/global-fraud-
+loss-survey-2025-report-published/ (data obrashcheniya: 19.03.2026). 
+17. Tan Z. Device-Centric Detection and Mitigation of Diameter Signaling Attacks against Mobile Core / 
+Z. Tan, B. Ding, Z . Zhang, Q. Li, Y. Guo, S. Lu.  2021 IEEE Conference on Communicatio ns and Network 
+Security (CNS). IEEE. 2021, pp. 29-37. 
+18. Measuring the Diameter – Protecting 4G Networks. Enea (Adaptive Mobile Security). 2018. URL: 
+https://www.enea.com/insights/measuring-the-diameter-protecting-4g-networks/ (data obrashcheniya: 15.03.2026). 
+19. Signaling Security: Achieving Adaptive Security in the Signaling Network : white paper / G. Matefi, 
+M. Stief. Ericsson. 2022. URL: ht tps://www.ericsson.com/en/reports-and-papers/white-papers/signaling-
+security (data obrashcheniya: 19.03.2026). 
+20. GSMA FS.19: Securing Diameter Protocol in M obile Networks. P1 Security . 2025. URL: 
+https://www.p1sec.com/blog/gsma-fs-19-strengthening-diameter-security-in-lte-and-5g-networks (data obra -
+shcheniya: 15.03.2026). 
+21. Recommendations to Mitigate Security Risks for Dia meter Networks. FCC CSRIC VI. 2018. URL: 
+https://www.fcc.gov/sites/default/files/csric6report_recommendationstomitigateriskdiamterprotocol032018.pdf 
+(data obrashcheniya: 15.03.2026). 
+22. Recommendation Q.3057: Signalling requirements and architecture for interconnection between 
+trustable network entities. ITU-T. Geneva: ITU, 2020. 
+23. SS7, Diameter, GTP -C, and HTTP/2 Firewall. Enea. URL: https://www.enea.com/solutions/signa-
+ling-security/signaling-firewall/ss7-diameter-gtp-c-and-http-2-firewall/ (data obrashcheniya: 15.03.2026). 
+24. Introduction to Diameter Security / Cellusys. 2018. URL: https://www.cellusys.com/2018/12/07/in-
+troduction-to-diameter-security/ (data obrashcheniya: 15.03.2026). 
+25. Oracle Communica tions Diameter Signaling Router: Feature Guide, Release 8.2. Oracle. URL: 
+https://docs.oracle.com/cd/E88991_01/docs.82/DSR%20Release%208.2%20Feature%20Guide.pdf (data ob -
+rashcheniya: 15.03.2026). 
+26. Afzal R. Rule-Based Anomaly Detection Model with Stateful Correlation Enhancing Mobile Net-
+work Security / R. Afzal, R.K. Murugesan.  Intelligent Automation & Soft Computing . 2022, v ol. 31, no. 3, 
+pp. 1825-1841. DOI: 10.32604/iasc.2022.020598. 
+
+[PDF PAGE 14]
+Вестник РГРТУ. 2026. № 96-1 / Vestnik of RSREU. 2026. No 96-1  29
+27. Ullah K. SS7 Vulnerabilities – A Survey and Implementation of Machine Learning vs Rule Based 
+Filtering for Detection of SS7 Network Attacks / K.  Ullah, I. Rashid, H. Afzal, M.M.W. Iqbal, Y. A. Ban-
+gash, H. Abbas. IEEE Communications Surveys & Tutorials. 2020, vol. 22, no. 2, pp. 1337-1371. 
+28. Guo Y. An empirical study of deep learning-based SS7 attack detection / Y. Guo, O. Ermis, Q. Tang, 
+H. Trang, A. De Oliveira. Information. 2023, vol. 14, no. 9. Art. 509. DOI: 10.3390/info14090509. 
+29. Edozie, E. Artificial intelligence advances i n anomaly detection for t elecom networks / E. Edozie, 
+A.N. Shu aibu, B.O. Sadiq, U.K. John.  Artificial Intelligence Review . 2025,  vol. 58, no. 4. Art. 100. DOI: 
+10.1007/s10462-025-11108-x. 
+30. Legacy and Modern Protocols at Risk: SS7, Diameter, GTP, IMS & 5G Security Threats. P1 Security. 
+2025. URL: https://www.p1sec.com/blog/legacy -and-modern-protocols-at-risk-ss7-diameter-gtp-ims-5g-se-
+curity-threats (data obrashcheniya: 15.03.2026). 
+31. Sobrinho Á. Challenges and opportunities in mobile network security for verti cal applications: A 
+survey / Á. Sobrinho, M. Vilarim, A. Barbosa, E. C. Gur jão, D. F. S. Santos [et al.].  ACM Computing Sur-
+veys. 2024, vol. 57, no. 2, art. 44, pp. 1-36. DOI: 10.1145/3696446. 
+32. 3GPP TS 29.213. Policy and Charging Control signalling flows and  Quality of Service (QoS) pa-
+rameter mapping (Release 18). 3GPP, 2024. URL: https://www.3gpp.org/DynaReport/29213.htm ( data 
+obrashcheniya: 19.03.2026). 
+33. Liu F.T. Isolation Forest / F.T. Liu, K.M. Ting, Z. -H. Zhou. 2008 Eighth IEEE Internation al Con-
+ference on Data Mining. IEEE. 2008, pp. 413-422. 
+34. Schölkopf, B. Estimating the Support of a High-Dimensional Distribution / B. Schölkopf, J. C. Platt, 
+J. Shawe-Taylor, A. J. Smola, R. C. Williamson. Neural Computation. 2001, vol. 13, no. 7, pp. 1443-1471. 
+35. Breiman L. Random forests. Machine learning. 2001 vol. 45, no. 1, pp. 5-32. 
+36. Friedman J.H. Greedy function approximation: a gradient boosti ng machine. Annals of statistics . 
+2001, pp. 1189-1232. 
+37. FSTEC Russia. Information Security Threats Database . URL: https://bdu.fs tec.ru/threat (data obra-
+shcheniya: 22.03.2026). (in Russian). 
+38. GOST R 52448 -2005. Information protection. Providing the security of networks telecommunica-
+tions. General provisions. Moscow: Standartinform. 2006, 15 p. (in Russian). 
+39. GOST R 53110-2008. Information security of the public communications network providing system. 
+General principles. Moscow: Standartinform. 2009, 19 p. (in Russian). 
+40. McMahan B. Communication-Efficient Learning of Deep Networks from Decentralized Data / B. 
+McMahan, E. Moore, D. Rama ge, S. Hampson, B. Agüera y Arcas.  Proceedings of the 20th International 
+Conference on Artificial Intelligence and Statistics (AISTATS). PMLR. 2017, pp. 1273-1282. 
+ 

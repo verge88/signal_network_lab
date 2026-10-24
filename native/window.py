@@ -19,6 +19,7 @@ from .widgets import label, button, row, panel, table, populate, spin, combo, Me
 from .graph import NetworkView
 from .node_icons import node_kind_combo,refresh_kind_icons
 from .jobs import Job
+from .ml_options import ModelOptions
 from .dialogs import node_editor,link_editor,flow_editor,incident_editor,KINDS,INCIDENTS
 
 NAMES=dict(INCIDENTS)
@@ -451,12 +452,14 @@ class MainWindow(QMainWindow):
         dl.addLayout(row(label('Набор признаков','Muted'),self.feature_set_combo,self.topology_variants,stretch=True))
         self.dataset_info=label('Нет датасета. Сформируйте выборку или импортируйте телеметрию CSV.','Muted');self.dataset_info.setWordWrap(True);dl.addWidget(self.dataset_info);l.addWidget(data)
         model,mlayout,mh=panel('02  /  Обучение детектора')
-        self.algorithm=combo([('random_forest','Random Forest'),('logistic','Logistic Regression'),('isolation_forest','Isolation Forest')]);self.trees=spin(120,20,300);self.train_seed=spin(42,0,2147483647);self.contamination=spin(.1,.001,.5,3)
+        self.algorithm=combo([(key,value['title']) for key,value in ml.ALGORITHMS.items()]);self.trees=spin(120,10,2000);self.train_seed=spin(42,0,2147483647);self.contamination=spin(.1,.001,.5,3)
         self.threshold_mode=combo([('validation','По F1 validation'),('contamination','По contamination')]);self.algorithm.currentIndexChanged.connect(self.algorithm_changed)
         config=QHBoxLayout()
-        for title,w in [('Алгоритм',self.algorithm),('Деревьев',self.trees),('Seed',self.train_seed),('Contamination',self.contamination),('Порог',self.threshold_mode)]:
+        for title,w in [('Алгоритм',self.algorithm),('Деревьев / итераций',self.trees),('Seed',self.train_seed),('Доля выбросов',self.contamination),('Порог',self.threshold_mode)]:
             v=QVBoxLayout();v.addWidget(label(title,'Muted'));v.addWidget(w);config.addLayout(v,2 if w in (self.algorithm,self.threshold_mode) else 1)
-        mlayout.addLayout(config);mh.addWidget(self.action_button('Обучить модель',self.train_model,'brain',True,True));self.algorithm_changed();l.addWidget(model)
+        mlayout.addLayout(config);self.algorithm_note=label('','Muted');self.algorithm_note.setWordWrap(True);mlayout.addWidget(self.algorithm_note)
+        self.model_options=ModelOptions(exclude=('n_estimators',));mlayout.addWidget(self.model_options)
+        mh.addWidget(self.action_button('Обучить модель',self.train_model,'brain',True,True));self.algorithm_changed();l.addWidget(model)
         self.evaluation_mode=combo([('run','Независимые прогоны'),('topology','Новая топология'),('fault','Новый тип отказа')]);self.holdout_value=combo([])
         self.evaluation_mode.currentIndexChanged.connect(self.refresh_holdout)
         mlayout.addLayout(row(label('Итоговая проверка','Muted'),self.evaluation_mode,label('Только в test','Muted'),self.holdout_value))
@@ -467,7 +470,10 @@ class MainWindow(QMainWindow):
         el.addLayout(metrics)
         detail=QHBoxLayout();self.confusion=table(['Истина / прогноз','Норма','Аномалия']);self.confusion.setMaximumHeight(130);self.confusion.setMinimumWidth(280);detail.addWidget(self.confusion)
         self.importance=table(['Признак','Важность']);self.importance.setMaximumHeight(220);detail.addWidget(self.importance,1);el.addLayout(detail)
-        tr=QHBoxLayout();tr.addWidget(label('Порог срабатывания','Muted'));self.threshold=QSlider(Qt.Orientation.Horizontal);self.threshold.setRange(0,1000);self.threshold.setValue(500);self.threshold.setAccessibleName('Порог детектора');tr.addWidget(self.threshold,1);self.threshold_label=label('0,500','Badge');tr.addWidget(self.threshold_label);el.addLayout(tr)
+        tr=QHBoxLayout();tr.addWidget(label('Порог срабатывания','Muted'));self.threshold=QSlider(Qt.Orientation.Horizontal);self.threshold.setRange(0,1000);self.threshold.setValue(500);self.threshold.setAccessibleName('Порог детектора');tr.addWidget(self.threshold,1)
+        self.threshold_input=spin(.5,-1e12,1e12,8);self.threshold_input.setAccessibleName('Точный порог детектора');self.threshold_input.setMaximumWidth(220);tr.addWidget(self.threshold_input)
+        self.threshold_label=label('0,500','Badge');tr.addWidget(self.threshold_label);el.addLayout(tr)
+        self.threshold_range=(0.,1.);self.threshold_input.valueChanged.connect(self.exact_threshold_changed)
         self.threshold.valueChanged.connect(self.threshold_changed);self.model_info=label('Модель ещё не обучена.','Muted');self.model_info.setWordWrap(True);el.addWidget(self.model_info)
         self.operational_info=label('Время обнаружения и ложные тревоги появятся после обучения.','Muted');self.operational_info.setWordWrap(True);el.addWidget(self.operational_info)
         curves=QHBoxLayout();self.roc_chart=Chart();self.roc_chart.setMinimumHeight(175);self.pr_chart=Chart();self.pr_chart.setMinimumHeight(175);curves.addWidget(self.roc_chart);curves.addWidget(self.pr_chart);el.addLayout(curves);l.addWidget(evaluation)
@@ -808,7 +814,10 @@ class MainWindow(QMainWindow):
     def choose_model(self):
         rid=self.model_combo.currentData();self.model_record=storage.get('model',rid) if rid else None;self.model_metrics=None;self.refresh_ml()
     def algorithm_changed(self):
-        algorithm=self.algorithm.currentData();self.trees.setEnabled(algorithm!='logistic');self.contamination.setEnabled(algorithm=='isolation_forest');self.threshold_mode.setEnabled(algorithm=='isolation_forest')
+        algorithm=self.algorithm.currentData();meta=ml.definition(algorithm)
+        self.trees.setEnabled('n_estimators' in meta['parameters']);self.contamination.setEnabled(meta['normal_only']);self.threshold_mode.setEnabled(meta['normal_only'])
+        if not meta['normal_only']:self.threshold_mode.setCurrentIndex(0)
+        self.model_options.set_algorithm(algorithm);self.algorithm_note.setText(meta['group']+' · '+meta['description']+(' Масштабирование обучается только на train.' if meta['scaled'] else ''))
     def refresh_ml(self):
         d=self.dataset_record;m=self.model_record
         if d and getattr(self,'feature_dataset_id',None)!=d['id']:
@@ -822,11 +831,11 @@ class MainWindow(QMainWindow):
             populate(self.confusion,[]);populate(self.importance,[]);self.model_info.setText('Модель ещё не выбрана.');self.operational_info.setText('Нет итоговой проверки.');self.roc_chart.set_series([]);self.pr_chart.set_series([]);return
         if self.display_model_id!=m['id']:
             self.display_model_id=m['id'];self.current_threshold=m['threshold']
-        self.threshold.blockSignals(True);self.threshold.setValue(round(self.current_threshold*1000));self.threshold.blockSignals(False);self.threshold_label.setText(number(self.current_threshold,3));self.render_model_metrics(ml.metrics(m['test_labels'],m['test_scores'],self.current_threshold))
+        self.threshold_range=ml.threshold_limits(m);self.sync_threshold_controls();self.render_model_metrics(ml.metrics(m['test_labels'],m['test_scores'],self.current_threshold))
         populate(self.importance,[[FEATURE_NAMES.get(r['feature'],r['feature']),number(r['value'],4)] for r in m['importance']])
         self.roc_chart.set_series([dict(name='ROC curve · FPR / TPR',color='#82adfa',points=m['curves']['roc'])]);self.pr_chart.set_series([dict(name='Precision–Recall curve',color='#8fe0c2',points=m['curves']['pr'])])
         evaluation=m.get('evaluation',{});key=m.get('feature_set','legacy-v1')
-        self.model_info.setText(f'{m["algorithm"]}  ·  {FEATURE_SETS.get(key,{}).get("title",key)}  ·  Train {m["split"]["train"]["samples"]} / Validation {m["split"]["validation"]["samples"]} / Test {m["split"]["test"]["samples"]}  ·  проверка: {dict(run="прогоны",topology="топология",fault="тип отказа").get(evaluation.get("mode"),"прогоны")} {evaluation.get("holdout") or ""}  ·  исходный порог {m["threshold"]:.3f}')
+        self.model_info.setText(f'{m.get("algorithm_title",m["algorithm"])}  ·  {FEATURE_SETS.get(key,{}).get("title",key)}  ·  Train {m["split"]["train"]["samples"]} / Validation {m["split"]["validation"]["samples"]} / Test {m["split"]["test"]["samples"]}  ·  проверка: {dict(run="прогоны",topology="топология",fault="тип отказа").get(evaluation.get("mode"),"прогоны")} {evaluation.get("holdout") or ""}  ·  исходный порог {m["threshold"]:.6g}'+(' · обучена только на нормальных train' if m.get('normal_only') else '')+'\n'+('Оценка вероятности аномалии.' if m.get('score_kind','probability')=='probability' else 'Оценка в единицах модели; больше — ближе к аномалии. Не вероятность.')+(' Встроенная важность признаков отсутствует.' if not m['importance'] else '')+('\nПредупреждения обучения: '+'; '.join(m.get('fit',{}).get('warnings',[])) if m.get('fit',{}).get('warnings') else ''))
         self.render_operational()
     def refresh_holdout(self):
         if not hasattr(self,'evaluation_mode'):return
@@ -849,8 +858,15 @@ class MainWindow(QMainWindow):
         for tile,key in zip(self.ml_metrics,['f1','precision','recall','roc_auc']):tile.update_value(number(met[key],3),'TEST SET')
         c=met['confusion'];populate(self.confusion,[['Норма',f'{c[0][0]}  TN',f'{c[0][1]}  FP'],['Аномалия',f'{c[1][0]}  FN',f'{c[1][1]}  TP']])
     def threshold_changed(self,value):
-        self.current_threshold=value/1000;self.threshold_label.setText(number(self.current_threshold,3));m=self.model_record
-        if m:self.render_model_metrics(ml.metrics(m['test_labels'],m['test_scores'],value/1000));self.render_operational()
+        lo,hi=self.threshold_range;self.set_detection_threshold(lo+(hi-lo)*value/1000)
+    def exact_threshold_changed(self,value):self.set_detection_threshold(value)
+    def sync_threshold_controls(self):
+        value=self.current_threshold;lo,hi=self.threshold_range
+        self.threshold.blockSignals(True);self.threshold.setValue(round(1000*(value-lo)/(hi-lo)));self.threshold.blockSignals(False)
+        self.threshold_input.blockSignals(True);self.threshold_input.setValue(value);self.threshold_input.blockSignals(False);self.threshold_label.setText(number(value,6))
+    def set_detection_threshold(self,value):
+        self.current_threshold=value;self.sync_threshold_controls();m=self.model_record
+        if m:self.render_model_metrics(ml.metrics(m['test_labels'],m['test_scores'],value));self.render_operational()
         populate(self.prediction_table,[]);self.prediction_info.setText('Порог изменён. Повторите применение детектора к прогону.')
     def generate_dataset(self):
         p=copy.deepcopy(self.project);count=self.dataset_runs.value();feature_set=self.feature_set_combo.currentData();variants=self.topology_variants.isChecked()
@@ -858,10 +874,10 @@ class MainWindow(QMainWindow):
         self.start_job('Генерация независимых прогонов и ML-признаков',lambda progress,cancel:research.dataset(p,count,p['name']+' / telemetry',progress,cancel,feature_set=feature_set,topology_variants=variants),done)
     def train_model(self):
         if not self.dataset_record:raise ValueError('Выберите или сформируйте датасет')
-        dataset_id=self.dataset_record['id'];algorithm=self.algorithm.currentData();seed=self.train_seed.value();trees=self.trees.value();contamination=self.contamination.value();mode=self.threshold_mode.currentData() if algorithm=='isolation_forest' else 'validation'
+        dataset_id=self.dataset_record['id'];algorithm=self.algorithm.currentData();seed=self.train_seed.value();trees=self.trees.value();contamination=self.contamination.value();mode=self.threshold_mode.currentData() if ml.definition(algorithm)['normal_only'] else 'validation';parameters=self.model_options.values()
         feature_set=self.feature_set_combo.currentData();evaluation=self.evaluation_mode.currentData();holdout=self.holdout_value.currentData()
         def done(r):self.model_record=r;self.refresh_library();self.statusBar().showMessage(f'Модель обучена. Test F1: {r["metrics"]["f1"]:.3f}',12000)
-        self.start_job('Обучение и независимая оценка детектора',lambda progress,cancel:research.train(dataset_id,algorithm,seed,trees,contamination,mode,progress,cancel,feature_set=feature_set,evaluation_mode=evaluation,holdout_value=holdout),done)
+        self.start_job('Обучение и независимая оценка детектора',lambda progress,cancel:research.train(dataset_id,algorithm,seed,trees,contamination,mode,progress,cancel,feature_set=feature_set,evaluation_mode=evaluation,holdout_value=holdout,parameters=parameters),done)
     def import_dataset(self):
         path,_=QFileDialog.getOpenFileName(self,'Импорт телеметрии CSV','','CSV (*.csv)')
         if not path:return
@@ -944,7 +960,7 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолесо — прокрутка карты\nShift + колесо — по горизонтали\nCtrl + колесо — масштаб\nЗажатое колесо или Пробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.18.4','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.19.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             dialog=getattr(self,'long_run_dialog',None)

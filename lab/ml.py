@@ -1,15 +1,15 @@
 import uuid
+import time
+import warnings
 import joblib
 import numpy as np
 import sklearn
-from sklearn.ensemble import IsolationForest, RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
+from threadpoolctl import threadpool_limits
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, average_precision_score, confusion_matrix, roc_curve, precision_recall_curve
 from .storage import DATA
 from .simulator import FEATURES
 from .features import specification, matrix, operational_metrics
+from .ml_algorithms import ALGORITHMS,definition,parameters as model_parameters,build,score,normal_threshold,estimator
 
 
 def metrics(y, score, threshold):
@@ -22,7 +22,24 @@ def metrics(y, score, threshold):
 
 
 def scores(model, algorithm, x):
-    return -model.score_samples(x) if algorithm=='isolation_forest' else model.predict_proba(x)[:,1]
+    return score(model,algorithm,x)
+
+
+def best_threshold(y,values):
+    """Exact maximum validation F1, with the highest threshold breaking ties."""
+    order=np.argsort(-values,kind='stable');ordered=values[order]
+    ends=np.r_[np.flatnonzero(np.diff(ordered)),len(ordered)-1]
+    tp=np.cumsum(y[order])[ends];denominator=np.sum(y)+ends+1
+    f1=np.divide(2*tp,denominator,out=np.zeros(len(ends),dtype=float),where=denominator>0)
+    return float(ordered[ends[int(np.argmax(f1))]])
+
+
+def threshold_limits(record):
+    """Display actual score units, including negative margins and large distances."""
+    values=[*record['test_scores'],record['threshold']]
+    if record.get('score_kind','probability' if record['algorithm']!='isolation_forest' else 'anomaly')=='probability':return 0.,1.
+    lo,hi=float(min(values)),float(max(values));padding=max((hi-lo)*.05,abs(lo)*.01,.001)
+    return lo-padding,hi+padding
 
 
 def input_matrix(rows,feature_set,custom_spec=None,feature_names=None):
@@ -43,7 +60,12 @@ def input_matrix(rows,feature_set,custom_spec=None,feature_names=None):
     return values
 
 
-def train(rows, algorithm, seed=42, threshold=None, trees=120, contamination=0.1, threshold_mode='validation', feature_set='legacy-v1', evaluation_mode='run', holdout_value=None,custom_spec=None,feature_names=None,fixed_split=None):
+def train(rows, algorithm, seed=42, threshold=None, trees=120, contamination=0.1, threshold_mode='validation', feature_set='legacy-v1', evaluation_mode='run', holdout_value=None,custom_spec=None,feature_names=None,fixed_split=None,parameters=None):
+    meta=definition(algorithm);config=model_parameters(algorithm,parameters,trees)
+    if type(seed) is not int or not 0<=seed<=2147483647 or not 0<contamination<=.5:raise ValueError('Некорректные параметры обучения')
+    if threshold_mode not in ('validation','contamination') or (threshold_mode=='contamination' and not meta['normal_only']):raise ValueError('Неподдерживаемый метод выбора порога')
+    if threshold is not None and not np.isfinite(threshold):raise ValueError('Порог должен быть конечным числом')
+    if not rows or any(r.get('label') not in (0,1) for r in rows):raise ValueError('Нужны окна с бинарной разметкой 0 / 1')
     contracts={r.get('feature_contract','messages-v1') for r in rows}
     if len(contracts)!=1:raise ValueError('Нельзя смешивать определения признаков messages-v1 и procedures-v2 в одном датасете')
     contract=next(iter(contracts))
@@ -93,25 +115,27 @@ def train(rows, algorithm, seed=42, threshold=None, trees=120, contamination=0.1
             break
     if split is None: raise ValueError('Для разбиения нужны нормальные и аномальные окна в train/validation/test. Добавьте независимые прогоны с событиями.')
     parts,(tr,va,te)=split
-    if algorithm=='logistic':
-        model=make_pipeline(StandardScaler(),LogisticRegression(max_iter=1500,class_weight='balanced',random_state=seed))
-        model.fit(x[tr],y[tr])
-        importance=np.abs(model[-1].coef_[0])
-    elif algorithm=='random_forest':
-        model=RandomForestClassifier(n_estimators=trees,max_depth=10,min_samples_leaf=2,class_weight='balanced',random_state=seed,n_jobs=1)
-        model.fit(x[tr],y[tr])
-        importance=model.feature_importances_
-    elif algorithm=='isolation_forest':
-        model=IsolationForest(n_estimators=trees,contamination=contamination,random_state=seed,n_jobs=1)
-        model.fit(x[tr & (y==0)])
-        importance=None
-    else: raise ValueError('Неизвестный алгоритм')
+    fit_mask=tr & (y==0) if meta['normal_only'] else tr
+    if fit_mask.sum()<3:raise ValueError('Нужно минимум три обучающих окна выбранного класса')
+    model=build(algorithm,config,seed,contamination,int(fit_mask.sum()),x.shape[1])
+    started=time.perf_counter()
+    with warnings.catch_warnings(record=True) as caught,threadpool_limits(limits=1):
+        warnings.simplefilter('always')
+        try:model.fit(x[fit_mask]) if meta['normal_only'] else model.fit(x[fit_mask],y[fit_mask])
+        except (ValueError,np.linalg.LinAlgError) as error:raise ValueError(meta['title']+': '+str(error)) from error
+    fit_seconds=time.perf_counter()-started
+    notices=list(dict.fromkeys(str(w.message)[:500] for w in caught))[:10]
+    last=estimator(model);importance=getattr(last,'feature_importances_',None)
+    importance_method='impurity' if importance is not None else None
+    if importance is None and not meta['normal_only'] and hasattr(last,'coef_'):
+        importance=np.abs(np.asarray(last.coef_).reshape(-1));importance_method='absolute_coefficient'
     validation=scores(model,algorithm,x[va])
-    if threshold is None and algorithm=='isolation_forest' and threshold_mode=='contamination':
-        threshold=float(-model.offset_)
+    if threshold is None and meta['normal_only'] and threshold_mode=='contamination':
+        threshold=normal_threshold(model,algorithm,x[fit_mask],contamination)
     if threshold is None:
-        candidates=np.unique(np.r_[0,validation,1])
-        threshold=float(max(candidates,key=lambda v:(f1_score(y[va],validation>=v,zero_division=0),v)))
+        threshold=best_threshold(y[va],validation)
+    threshold=float(threshold)
+    if not np.isfinite(threshold):raise ValueError('Модель не смогла определить конечный порог')
     test=scores(model,algorithm,x[te])
     fpr,tpr,_=roc_curve(y[te],test)
     precision,recall,_=precision_recall_curve(y[te],test)
@@ -122,14 +146,21 @@ def train(rows, algorithm, seed=42, threshold=None, trees=120, contamination=0.1
     model_id=uuid.uuid4().hex[:16]
     directory=DATA/'models'
     directory.mkdir(exist_ok=True)
-    joblib.dump(dict(model=model,algorithm=algorithm,features=features,feature_set=feature_set,feature_contract=contract,custom_spec=custom_spec),(directory/f'{model_id}.joblib'))
-    return dict(model_id=model_id,algorithm=algorithm,feature_set=feature_set,feature_contract=contract,threshold=threshold,seed=seed,
+    result=dict(model_id=model_id,algorithm=algorithm,algorithm_title=meta['title'],score_kind=meta['score_kind'],normal_only=meta['normal_only'],feature_set=feature_set,feature_contract=contract,threshold=threshold,seed=seed,
         evaluation=dict(mode=evaluation_mode,holdout=holdout_value,conditions=conditions),operational=operational,test_observations=test_rows,
-        training_config=dict(trees=trees,contamination=contamination,threshold_mode=threshold_mode,seed=seed),features=features,custom_spec=custom_spec,
+        training_config=dict(trees=config.get('n_estimators',trees),contamination=contamination,threshold_mode=threshold_mode,seed=seed,parameters=config),features=features,custom_spec=custom_spec,
+        fit=dict(samples=int(fit_mask.sum()),normal_only=meta['normal_only'],scaled=meta['scaled'],seconds=fit_seconds,warnings=notices,
+            pca_components=int(model['pca'].n_components_) if algorithm=='elliptic_envelope' else None),importance_method=importance_method,
         numpy_version=np.__version__,sklearn_version=sklearn.__version__,metrics=metrics(y[te],test,threshold),validation=metrics(y[va],validation,threshold),
         split={name:dict(runs=list(p),samples=int(m.sum())) for name,p,m in zip(['train','validation','test'],parts,[tr,va,te])},
         importance=[dict(feature=f,value=float(v)) for f,v in sorted(zip(features,importance),key=lambda z:-z[1])] if importance is not None else [],
         test_labels=y[te].tolist(),test_scores=test.tolist(),curves=dict(roc=[list(a) for a in zip(fpr.tolist(),tpr.tolist())],pr=[list(a) for a in zip(recall.tolist(),precision.tolist())]))
+    path=directory/f'{model_id}.joblib';temporary=path.with_suffix('.tmp')
+    try:
+        joblib.dump(dict(model=model,algorithm=algorithm,features=features,feature_set=feature_set,feature_contract=contract,custom_spec=custom_spec,parameters=config),temporary)
+        temporary.replace(path)
+    finally:temporary.unlink(missing_ok=True)
+    return result
 
 
 def predict(model_id, rows, threshold):

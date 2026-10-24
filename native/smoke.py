@@ -133,6 +133,7 @@ class SmokeTest(QObject):
             self.verify_validation()
             self.verify_procedure_viewer()
             self.verify_expanded_ml()
+            self.verify_standard_ml()
             self.verify_monitoring()
             self.verify_testbed()
             self.verify_handbook()
@@ -270,6 +271,41 @@ class SmokeTest(QObject):
             w.dataset_record,w.model_record,w.current_threshold,key,mode,theme=previous
             w.feature_dataset_id=None;w.refresh_ml();w.feature_set_combo.setCurrentIndex(w.feature_set_combo.findData(key));w.evaluation_mode.setCurrentIndex(w.evaluation_mode.findData(mode))
             w.apply_theme(theme,persist=False);w.show_page(0)
+    def verify_standard_ml(self):
+        from lab.features import LEGACY
+        from .ml_options import ModelOptionsDialog
+        w=self.window;previous=(w.dataset_record,w.model_record,w.current_threshold,w.algorithm.currentData(),w.theme)
+        rng=np.random.default_rng(81);rows=[];models=[]
+        for run in range(12):
+            for tick in range(20):
+                truth=int(tick>=10);values=rng.normal(size=len(LEGACY))+truth*np.linspace(1.,3.,len(LEGACY));values[-1]=0.
+                rows.append(dict(zip(LEGACY,values),run_id=str(run),time=tick,label=truth,window_seconds=1,fault_intervals=[[10,20]],feature_contract='procedures-v2'))
+        try:
+            assert w.algorithm.count()==25
+            for key in ml.ALGORITHMS:
+                w.algorithm.setCurrentIndex(w.algorithm.findData(key));assert w.model_options.algorithm==key
+                parameters=w.model_options.values();result=ml.train(rows,key,trees=20,parameters=parameters);models.append(result)
+                test=[r for r in rows if r['run_id'] in result['split']['test']['runs']]
+                np.testing.assert_allclose([r['score'] for r in ml.predict(result['model_id'],test,result['threshold'])],result['test_scores'],atol=1e-9)
+                assert np.isfinite(result['test_scores']).all()
+                if key in ('svm','mlp','gaussian_mixture'):
+                    w.model_record=dict(result,id=result['model_id']);w.refresh_ml();w.show_page(3);self.app.processEvents()
+                    w.exact_threshold_changed(-3.25);assert w.current_threshold==-3.25 and w.threshold_input.value()==-3.25
+                    if key=='svm':
+                        w.apply_theme('graphite',persist=False);self.capture('ml-catalogue-svm');scroll=w.pages.widget(3);scroll.ensureWidgetVisible(w.threshold_input);self.app.processEvents();self.capture('ml-margin-threshold');scroll.verticalScrollBar().setValue(0)
+                    elif key=='mlp':
+                        w.apply_theme('porcelain',persist=False);self.capture('ml-catalogue-mlp')
+            dialog=ModelOptionsDialog(w,['random_forest','svm','mlp','local_outlier_factor'],trees=25)
+            try:
+                dialog.show();self.app.processEvents();dialog.selector.setCurrentIndex(2);self.app.processEvents()
+                assert dialog.result_config()['mlp']['hidden_layer_sizes']==[64,32]
+                if self.output:dialog.grab().save(str(self.output/'ml-model-options.png'))
+            finally:dialog.close();dialog.deleteLater()
+            self.completed.append('25 native ML models: individual parameters, training, persistence/reload and inference; signed exact thresholds; train-only normalization; monitoring parameter editor')
+            if self.output:(self.output/'ml-algorithms.json').write_text(json.dumps([dict(algorithm=m['algorithm'],f1=m['metrics']['f1'],score_kind=m['score_kind'],threshold=m['threshold'],fit=m['fit']) for m in models],ensure_ascii=False,indent=2),encoding='utf-8')
+        finally:
+            for model in models:(ml.DATA/'models'/f'{model["model_id"]}.joblib').unlink(missing_ok=True)
+            w.dataset_record,w.model_record,w.current_threshold,key,theme=previous;w.display_model_id=None;w.refresh_ml();w.algorithm.setCurrentIndex(w.algorithm.findData(key));w.apply_theme(theme,persist=False);w.show_page(0)
     def verify_attacks(self):
         from lab.schema import Project
         from lab.attacks import PRESETS,from_preset,decode_template

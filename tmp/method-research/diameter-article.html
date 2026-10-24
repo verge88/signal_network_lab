@@ -1,0 +1,242 @@
+<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ru-ru" lang="ru-ru" dir="ltr"><head><meta name="viewport" content="width=device-width, initial-scale=1.0" /><base href="https://vestnik.rsreu.ru/ru/archive/2026/vypusk-96-chast-1/1846-1995-4565-2026-96-1-16-29" />
+	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+	<meta name="author" content="Редактор" />
+	<meta name="generator" content="Joomla! - Open Source Content Management" />
+	<title>Иерархический метод распределённого обнаружения компрометации и атак в сигнальных сетях Diameter</title>
+	<link href="https://vestnik.rsreu.ru/ru/archive/2026/vypusk-96-chast-1/1846-1995-4565-2026-96-1-16-29" rel="alternate" hreflang="ru-RU" />
+	<link href="https://vestnik.rsreu.ru/en/archive/2026/issue-96-1/1885-1995-4565-2026-96-1-16-29" rel="alternate" hreflang="en-GB" />
+	<link href="/templates/flat/favicon.ico" rel="shortcut icon" type="image/vnd.microsoft.icon" />
+	<link href="/templates/flat/css/styles.css" rel="stylesheet" type="text/css" />
+	<link href="/media/mod_languages/css/template.css?56eadf57a9f3c0d0c5f717be80f76a7c" rel="stylesheet" type="text/css" />
+	<link href="/media/jui/css/chosen.css?56eadf57a9f3c0d0c5f717be80f76a7c" rel="stylesheet" type="text/css" />
+	<link href="/media/com_finder/css/finder.css?56eadf57a9f3c0d0c5f717be80f76a7c" rel="stylesheet" type="text/css" />
+	<script src="/media/jui/js/jquery.min.js?56eadf57a9f3c0d0c5f717be80f76a7c" type="text/javascript"></script>
+	<script src="/media/jui/js/jquery-noconflict.js?56eadf57a9f3c0d0c5f717be80f76a7c" type="text/javascript"></script>
+	<script src="/media/jui/js/jquery-migrate.min.js?56eadf57a9f3c0d0c5f717be80f76a7c" type="text/javascript"></script>
+	<script src="/media/system/js/caption.js?56eadf57a9f3c0d0c5f717be80f76a7c" type="text/javascript"></script>
+	<script src="/templates/flat/js/scripts.js" type="text/javascript"></script>
+	<script src="/media/jui/js/bootstrap.min.js?56eadf57a9f3c0d0c5f717be80f76a7c" type="text/javascript"></script>
+	<script src="/media/jui/js/chosen.jquery.min.js?56eadf57a9f3c0d0c5f717be80f76a7c" type="text/javascript"></script>
+	<script type="text/javascript">
+jQuery(window).on('load',  function() {
+				new JCaption('img.caption');
+			});jQuery(function($){ $(".hasTooltip").tooltip({"html": true,"container": "body"}); });
+	jQuery(function ($) {
+		initChosen();
+		$("body").on("subform-row-add", initChosen);
+
+		function initChosen(event, container)
+		{
+			container = container || document;
+			$(container).find(".advancedSelect").chosen({"disable_search_threshold":10,"search_contains":true,"allow_single_deselect":true,"placeholder_text_multiple":"\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0438\u043b\u0438 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u043e\u0432","placeholder_text_single":"\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435","no_results_text":"\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u044b \u043d\u0435 \u0441\u043e\u0432\u043f\u0430\u0434\u0430\u044e\u0442"});
+		}
+	});
+	
+jQuery(document).ready(function() {
+	var value, searchword = jQuery('#mod-finder-searchword97');
+
+		// Get the current value.
+		value = searchword.val();
+
+		// If the current value equals the default value, clear it.
+		searchword.on('focus', function ()
+		{
+			var el = jQuery(this);
+
+			if (el.val() === 'Текст для поиска...')
+			{
+				el.val('');
+			}
+		});
+
+		// If the current value is empty, set the previous value.
+		searchword.on('blur', function ()
+		{
+			var el = jQuery(this);
+
+			if (!el.val())
+			{
+				el.val(value);
+			}
+		});
+
+		jQuery('#mod-finder-searchform97').on('submit', function (e)
+		{
+			e.stopPropagation();
+			var advanced = jQuery('#mod-finder-advanced97');
+
+			// Disable select boxes with no value selected.
+			if (advanced.length)
+			{
+				advanced.find('select').each(function (index, el)
+				{
+					var el = jQuery(el);
+
+					if (!el.val())
+					{
+						el.attr('disabled', 'disabled');
+					}
+				});
+			}
+		});});
+	</script>
+	<link href="https://vestnik.rsreu.ru/ru/archive/2026/vypusk-96-chast-1/1846-1995-4565-2026-96-1-16-29" rel="alternate" hreflang="x-default" />
+<!--[if lt IE 9]><script src="/<?php echo JUri::root(true); ?>/media/jui/js/html5.js"></script><![endif]--></head><body><div class="page"><div class="htop"><div class="page-width">
+
+<div class="custom"  >
+	<div class="mail">
+<div class="icon">&nbsp;</div>
+<strong><span id="cloak6eec363df77dd4bf190134bfd054a1b7">Этот адрес электронной почты защищён от спам-ботов. У вас должен быть включен JavaScript для просмотра.</span><script type='text/javascript'>
+				document.getElementById('cloak6eec363df77dd4bf190134bfd054a1b7').innerHTML = '';
+				var prefix = '&#109;a' + 'i&#108;' + '&#116;o';
+				var path = 'hr' + 'ef' + '=';
+				var addy6eec363df77dd4bf190134bfd054a1b7 = '&#111;nt&#105;' + '&#64;';
+				addy6eec363df77dd4bf190134bfd054a1b7 = addy6eec363df77dd4bf190134bfd054a1b7 + 'rsr&#101;&#117;' + '&#46;' + 'r&#117;';
+				var addy_text6eec363df77dd4bf190134bfd054a1b7 = '&#111;nt&#105;' + '&#64;' + 'rsr&#101;&#117;' + '&#46;' + 'r&#117;';document.getElementById('cloak6eec363df77dd4bf190134bfd054a1b7').innerHTML += '<a ' + path + '\'' + prefix + ':' + addy6eec363df77dd4bf190134bfd054a1b7 + '\'>'+addy_text6eec363df77dd4bf190134bfd054a1b7+'<\/a>';
+		</script></strong></div>
+<div class="phone">
+<div class="icon">&nbsp;</div>
+<strong>+7 (4912) 72-03-73</strong></div>
+<div class="website">
+<div class="icon">&nbsp;</div>
+<strong>Интернет-портал РГРТУ: <a href="https://rsreu.ru/ru" target="_blank">https://rsreu.ru</a></strong></div></div>
+
+<form id="mod-finder-searchform97" action="/ru/component/finder/search" method="get" class="form-search">
+	<div class="finder">
+		<label for="mod-finder-searchword97" class="element-invisible finder">Искать</label><input type="text" name="q" id="mod-finder-searchword97" class="search-query input-medium" size="25" value="" placeholder="Текст для поиска..."/><button class="btn btn-primary hasTooltip  finder" type="submit" title="Искать"><span class="icon-search icon-white"></span>Искать</button>
+						<input type="hidden" name="Itemid" value="372" />	</div>
+</form>
+</div></div><div class="head"><div class="page-width"><a class="logo" href="/"><img src="https://vestnik.rsreu.ru/images/Logo.png" title="Вестник Рязанского государственного<br/>радиотехнического университета" /></a><div class="title"><h1><a href="/">Вестник Рязанского государственного<br/>радиотехнического университета</a></h1></div><div class="menu-main"><ul class="nav menu" id="MainMenu">
+<li class="item-101"><a href="/ru/" >Главная</a></li><li class="item-120 deeper parent"><a href="/ru/about-journal" >О журнале</a><ul class="nav-child unstyled small"><li class="item-136"></li><li class="item-222"></li><li class="item-137"></li><li class="item-138"></li><li class="item-140"></li><li class="item-106"></li></ul></li><li class="item-103 deeper parent"><a href="/ru/to-authors" >Авторам</a><ul class="nav-child unstyled small"><li class="item-205"></li><li class="item-141"></li><li class="item-142"></li><li class="item-143"></li></ul></li><li class="item-104 active deeper parent"><a href="/ru/archive" >Архив</a><ul class="nav-child unstyled small"><li class="item-368 active parent"><a href="/ru/archive/2026" >2026</a></li><li class="item-356 parent"><a href="/ru/archive/2025" >2025</a></li><li class="item-346 parent"><a href="/ru/archive/2024" >2024</a></li><li class="item-336 parent"><a href="/ru/archive/2023" >2023</a></li><li class="item-326 parent"><a href="/ru/archive/2022" >2022</a></li><li class="item-316 parent"><a href="/ru/archive/2021" >2021</a></li><li class="item-306 parent"><a href="/ru/archive/2020" >2020</a></li><li class="item-295 parent"><a href="/ru/archive/2019" >2019</a></li><li class="item-283 parent"><a href="/ru/archive/2018" >2018</a></li><li class="item-221 parent"><a href="/ru/archive/2017" >2017</a></li><li class="item-164 parent"><a href="/ru/archive/2016" >2016</a></li><li class="item-122 parent"><a href="/ru/archive/2015" >2015</a></li><li class="item-123 parent"><a href="/ru/archive/2014" >2014</a></li><li class="item-121 parent"><a href="/ru/archive/2013" >2013</a></li><li class="item-178 parent"><a href="/ru/archive/2012-1" >2012</a></li><li class="item-170 parent"><a href="/ru/archive/2011" >2011</a></li><li class="item-171 parent"><a href="/ru/archive/2010" >2010</a></li><li class="item-175 parent"><a href="/ru/archive/2009" >2009</a></li><li class="item-173 parent"><a href="/ru/archive/2008" >2008</a></li><li class="item-176 parent"><a href="/ru/archive/2007" >2007</a></li></ul></li><li class="item-105"><a href="/ru/about-journal/contacts" >Контакты</a></li></ul>
+<div class="mod-languages-switch">
+
+	<ul class="lang-inline">
+									<li dir="ltr">
+			<a href="/en/archive/2026/issue-96-1/1885-1995-4565-2026-96-1-16-29">
+							EN						</a>
+			</li>
+				</ul>
+
+</div>
+</div></div></div><div class="cont-wrap"><div class="cont page-width"><div id="system-message-container">
+	</div>
+<div class="content-right"></div><div class="content-wrap"><div class="leftmenu"><ul class="nav menu_left">
+<li class="item-368 active deeper parent"><a href="/ru/archive/2026" >2026</a><ul class="nav-child unstyled small"><li class="item-367"><a href="/ru/archive/2026/vypusk-95" >Выпуск 95</a></li><li class="item-372 current active"><a href="/ru/archive/2026/vypusk-96-chast-1" >Выпуск 96 - 1</a></li><li class="item-373"><a href="/ru/archive/2026/vypusk-96-chast-2" >Выпуск 96 - 2</a></li><li class="item-376"><a href="/ru/archive/2026/vypusk-97" >Выпуск 97</a></li></ul></li><li class="item-356 deeper parent"><a href="/ru/archive/2025" >2025</a><ul class="nav-child unstyled small"><li class="item-357"><a href="/ru/archive/2025/vypusk-91" >Выпуск 91</a></li><li class="item-360"><a href="/ru/archive/2025/vypusk-92" >Выпуск 92</a></li><li class="item-362"><a href="/ru/archive/2025/vypusk-93" >Выпуск 93</a></li><li class="item-363"><a href="/ru/archive/2025/vypusk-94" >Выпуск 94</a></li></ul></li><li class="item-346 deeper parent"><a href="/ru/archive/2024" >2024</a><ul class="nav-child unstyled small"><li class="item-347"><a href="/ru/archive/2024/vypusk-87" >Выпуск 87</a></li><li class="item-349"><a href="/ru/archive/2024/vypusk-88" >Выпуск 88</a></li><li class="item-352"><a href="/ru/archive/2024/vypusk-89" >Выпуск 89</a></li><li class="item-354"><a href="/ru/archive/2024/vypusk-90" >Выпуск 90</a></li></ul></li><li class="item-336 deeper parent"><a href="/ru/archive/2023" >2023</a><ul class="nav-child unstyled small"><li class="item-338"><a href="/ru/archive/2023/vypusk-83" >Выпуск 83</a></li><li class="item-339"><a href="/ru/archive/2023/vypusk-84" >Выпуск 84</a></li><li class="item-342"><a href="/ru/archive/2023/vypusk-85" >Выпуск 85</a></li><li class="item-344"><a href="/ru/archive/2023/vypusk-86" >Выпуск 86</a></li></ul></li><li class="item-326 deeper parent"><a href="/ru/archive/2022" >2022</a><ul class="nav-child unstyled small"><li class="item-329"><a href="/ru/archive/2022/vypusk-79" >Выпуск 79</a></li><li class="item-330"><a href="/ru/archive/2022/vypusk-80" >Выпуск 80</a></li><li class="item-332"><a href="/ru/archive/2022/vypusk-81" >Выпуск 81</a></li><li class="item-334"><a href="/ru/archive/2022/vypusk-82" >Выпуск 82</a></li></ul></li><li class="item-316 deeper parent"><a href="/ru/archive/2021" >2021</a><ul class="nav-child unstyled small"><li class="item-318"><a href="/ru/archive/2021/vypusk-75" >Выпуск 75</a></li><li class="item-320"><a href="/ru/archive/2021/vypusk-76" >Выпуск 76</a></li><li class="item-322"><a href="/ru/archive/2021/vypusk-77" >Выпуск 77</a></li><li class="item-324"><a href="/ru/archive/2021/vypusk-78" >Выпуск 78</a></li></ul></li><li class="item-306 deeper parent"><a href="/ru/archive/2020" >2020</a><ul class="nav-child unstyled small"><li class="item-307"><a href="/ru/archive/2020/vypusk-71" >Выпуск 71</a></li><li class="item-310"><a href="/ru/archive/2020/vypusk-72" >Выпуск 72</a></li><li class="item-312"><a href="/ru/archive/2020/vypusk-73" >Выпуск 73</a></li><li class="item-314"><a href="/ru/archive/2020/vypusk-74" >Выпуск 74</a></li></ul></li><li class="item-295 deeper parent"><a href="/ru/archive/2019" >2019</a><ul class="nav-child unstyled small"><li class="item-296"><a href="/ru/archive/2019/1-vypusk-67" >№1 - Выпуск 67</a></li><li class="item-299"><a href="/ru/archive/2019/vypusk-68" >Выпуск 68</a></li><li class="item-301"><a href="/ru/archive/2019/vypusk-69" >Выпуск 69</a></li><li class="item-303"><a href="/ru/archive/2019/vypusk-70" >Выпуск 70</a></li></ul></li><li class="item-283 deeper parent"><a href="/ru/archive/2018" >2018</a><ul class="nav-child unstyled small"><li class="item-284"><a href="/ru/archive/2018/1-vypusk-63" >№1 - Выпуск 63</a></li><li class="item-287"><a href="/ru/archive/2018/2-vypusk-64" >№2 - Выпуск 64</a></li><li class="item-289"><a href="/ru/archive/2018/3-vypusk-65" >№3 - Выпуск 65</a></li><li class="item-291"><a href="/ru/archive/2018/4-vypusk-66-chast-1" >№4 - Выпуск 66 Часть 1</a></li><li class="item-292"><a href="/ru/archive/2018/4-vypusk-66-chast-2" >№4 - Выпуск 66 Часть 2</a></li></ul></li><li class="item-221 deeper parent"><a href="/ru/archive/2017" >2017</a><ul class="nav-child unstyled small"><li class="item-223"><a href="/ru/archive/2017/1-vypusk-59" >№1 - Выпуск 59</a></li><li class="item-277"><a href="/ru/archive/2017/2-vypusk-60" >№2 - Выпуск 60</a></li><li class="item-280"><a href="/ru/archive/2017/3-vypusk-61" >№3 - Выпуск 61</a></li><li class="item-281"><a href="/ru/archive/2017/4-vypusk-62" >№4 - Выпуск 62</a></li></ul></li><li class="item-164 deeper parent"><a href="/ru/archive/2016" >2016</a><ul class="nav-child unstyled small"><li class="item-165"><a href="/ru/archive/2016/1-vypusk-55" >№1 - Выпуск 55</a></li><li class="item-166"><a href="/ru/archive/2016/2-vypusk-56" >№2 - Выпуск 56</a></li><li class="item-168"><a href="/ru/archive/2016/3-vypusk-57" >№3 - Выпуск 57</a></li><li class="item-204"><a href="/ru/archive/2016/4-vypusk-58" >№4 - Выпуск 58</a></li></ul></li><li class="item-122 deeper parent"><a href="/ru/archive/2015" >2015</a><ul class="nav-child unstyled small"><li class="item-146"><a href="/ru/archive/2015/1-vypusk-51" >№1 - Выпуск 51</a></li><li class="item-147"><a href="/ru/archive/2015/2-vypusk-52" >№2 - Выпуск 52</a></li><li class="item-160"><a href="/ru/archive/2015/3-vypusk-53" >№3 - Выпуск 53</a></li><li class="item-161"><a href="/ru/archive/2015/4-vypusk-54-chast-1" >№4 - Выпуск 54 - Часть 1</a></li><li class="item-162"><a href="/ru/archive/2015/4-vypusk-54-chast-2" >№4 - Выпуск 54 - Часть 2</a></li></ul></li><li class="item-123 deeper parent"><a href="/ru/archive/2014" >2014</a><ul class="nav-child unstyled small"><li class="item-148"><a href="/ru/archive/2014/1-2014" >№1 - Выпуск 47</a></li><li class="item-149"><a href="/ru/archive/2014/2-2014" >№2 - Выпуск 48</a></li><li class="item-150"><a href="/ru/archive/2014/3-2014" >№3 - Выпуск 49</a></li><li class="item-158"><a href="/ru/archive/2014/4-vypusk-50-chast-1" >№4 - Выпуск 50 - Часть 1</a></li><li class="item-159"><a href="/ru/archive/2014/4-vypusk-50-chast-2" >№4 - Выпуск 50 - Часть 2</a></li></ul></li><li class="item-121 deeper parent"><a href="/ru/archive/2013" >2013</a><ul class="nav-child unstyled small"><li class="item-144"><a href="/ru/archive/2013/1-vypusk-43" >№1 - Выпуск 43</a></li><li class="item-145"><a href="/ru/archive/2013/2-vypusk-44" >№2 - Выпуск 44</a></li><li class="item-154"><a href="/ru/archive/2013/3-vypusk-45" >№3 - Выпуск 45</a></li><li class="item-155"><a href="/ru/archive/2013/4-vypusk-46-chast-1" >№4 - Выпуск 46 - Часть 1</a></li><li class="item-156"><a href="/ru/archive/2013/4-vypusk-46-chast-2" >№4 - Выпуск 46 - Часть 2</a></li><li class="item-157"><a href="/ru/archive/2013/4-vypusk-46-chast-3" >№4 - Выпуск 46 - Часть 3</a></li></ul></li><li class="item-178 deeper parent"><a href="/ru/archive/2012-1" >2012</a><ul class="nav-child unstyled small"><li class="item-179"><a href="/ru/archive/2012-1/vestnik-rgrtu-1-vypusk-39-chast-1-2012-god" >№1 - Выпуск 39 - Часть 1</a></li><li class="item-180"><a href="/ru/archive/2012-1/1-vypusk-39-chast-1" >№1 - Выпуск 39 - Часть 2</a></li><li class="item-181"><a href="/ru/archive/2012-1/2-vypusk-40" >№2 - Выпуск 40 </a></li><li class="item-182"><a href="/ru/archive/2012-1/3-vypusk-41" >№3 - Выпуск 41</a></li><li class="item-183"><a href="/ru/archive/2012-1/4-vypusk-42-chast-1" >№ 4 - Выпуск 42 - Часть 1 </a></li><li class="item-184"><a href="/ru/archive/2012-1/4-vypusk-42-chast-2" >№ 4 - Выпуск 42 - Часть 2</a></li></ul></li><li class="item-170 deeper parent"><a href="/ru/archive/2011" >2011</a><ul class="nav-child unstyled small"><li class="item-177"><a href="/ru/archive/2011/112" >№1 - Выпуск 35</a></li><li class="item-185"><a href="/ru/archive/2011/2-vypusk-36" >№2 - Выпуск 36</a></li><li class="item-186"><a href="/ru/archive/2011/3-vypusk-37" >№3 - Выпуск 37</a></li><li class="item-187"><a href="/ru/archive/2011/4-vypusk-38" >№4 - Выпуск 38</a></li></ul></li><li class="item-171 deeper parent"><a href="/ru/archive/2010" >2010</a><ul class="nav-child unstyled small"><li class="item-188"><a href="/ru/archive/2010/1-vypusk-31" >№1 - Выпуск 31</a></li><li class="item-189"><a href="/ru/archive/2010/2-vypusk-32" >№2 - Выпуск 32</a></li><li class="item-190"><a href="/ru/archive/2010/3-vypusk-33" >№3 - Выпуск 33</a></li><li class="item-191"><a href="/ru/archive/2010/4-vypusk-34" >№4 - Выпуск 34</a></li></ul></li><li class="item-175 deeper parent"><a href="/ru/archive/2009" >2009</a><ul class="nav-child unstyled small"><li class="item-192"><a href="/ru/archive/2009/1-vypusk-27" >№1 - Выпуск 27</a></li><li class="item-193"><a href="/ru/archive/2009/2-vypusk-28" >№2 - Выпуск 28</a></li><li class="item-194"><a href="/ru/archive/2009/3-vypusk-29" >№3 - Выпуск 29</a></li><li class="item-195"><a href="/ru/archive/2009/4-vypusk-30" >№4 - Выпуск 30</a></li><li class="item-196"><a href="/ru/archive/2009/4-vypusk-30-prilozhenie" >№4 - Выпуск 30 (приложение)</a></li></ul></li><li class="item-173 deeper parent"><a href="/ru/archive/2008" >2008</a><ul class="nav-child unstyled small"><li class="item-197"><a href="/ru/archive/2008/1-vypusk-23" >№1 - Выпуск 23</a></li><li class="item-198"><a href="/ru/archive/2008/2-vypusk-24" >№2 - Выпуск 24</a></li><li class="item-199"><a href="/ru/archive/2008/3-vypusk-25" >№3 - Выпуск 25</a></li><li class="item-200"><a href="/ru/archive/2008/4-vypusk-26" >№4 - Выпуск 26</a></li></ul></li><li class="item-176 deeper parent"><a href="/ru/archive/2007" >2007</a><ul class="nav-child unstyled small"><li class="item-201"><a href="/ru/archive/2007/1-vypusk-20" >№1 - Выпуск 20</a></li><li class="item-202"><a href="/ru/archive/2007/2-vypusk-21" >№2 - Выпуск 21</a></li><li class="item-203"><a href="/ru/archive/2007/3-vypusk-22" >№3 - Выпуск 22</a></li></ul></li></ul>
+</div><div class="item-page-wrap"><div class="breadcrumbs">
+<ul itemscope itemtype="https://schema.org/BreadcrumbList" class="breadcrumb">
+			<li class="active">
+			<span class="divider icon-location"></span>
+		</li>
+	
+				<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+									<a itemprop="item" href="/ru/" class="pathway"><span itemprop="name">Главная</span></a>
+				
+									<span class="divider">
+						<img src="/media/system/images/arrow.png" alt="" />					</span>
+								<meta itemprop="position" content="1">
+			</li>
+					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+									<a itemprop="item" href="/ru/archive" class="pathway"><span itemprop="name">Архив</span></a>
+				
+									<span class="divider">
+						<img src="/media/system/images/arrow.png" alt="" />					</span>
+								<meta itemprop="position" content="2">
+			</li>
+					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+									<a itemprop="item" href="/ru/archive/2026" class="pathway"><span itemprop="name">2026</span></a>
+				
+									<span class="divider">
+						<img src="/media/system/images/arrow.png" alt="" />					</span>
+								<meta itemprop="position" content="3">
+			</li>
+					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+									<a itemprop="item" href="/ru/archive/2026/vypusk-96-chast-1" class="pathway"><span itemprop="name">Выпуск 96 - 1</span></a>
+				
+									<span class="divider">
+						<img src="/media/system/images/arrow.png" alt="" />					</span>
+								<meta itemprop="position" content="4">
+			</li>
+					<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="active">
+				<span itemprop="name">
+					Иерархический метод распределённого обнаружения компрометации и атак в сигнальных сетях Diameter				</span>
+				<meta itemprop="position" content="5">
+			</li>
+		</ul>
+<h2>Выпуск 96 - 1</h2></div><div class="item-page" itemscope itemtype="https://schema.org/Article">
+	<meta itemprop="inLanguage" content="ru-RU" />
+	
+		
+			<div class="page-header">
+					<h2 itemprop="name">
+				Иерархический метод распределённого обнаружения компрометации и атак в сигнальных сетях Diameter			</h2>
+									</div>
+					
+	
+	
+				
+						<div itemprop="articleBody">
+		<p>УДК&nbsp;004.056.5:004.8:621.396</p>
+<p><strong>ИЕРАРХИЧЕСКИЙ МЕТОД РАСПРЕДЕЛЁННОГО ОБНАРУЖЕНИЯ КОМПРОМЕТАЦИИ И АТАК В СИГНАЛЬНЫХ СЕТЯХ DIAMETER</strong></p>
+<p>И. Л. Виноградова, д.т.н., профессор кафедры «Телекоммуникационные системы» УУНиТ, Уфа, Россия; e-mail: <span id="cloak05797cb5d1a5685a9261922d00e392f5">Этот адрес электронной почты защищён от спам-ботов. У вас должен быть включен JavaScript для просмотра.</span><script type='text/javascript'>
+				document.getElementById('cloak05797cb5d1a5685a9261922d00e392f5').innerHTML = '';
+				var prefix = '&#109;a' + 'i&#108;' + '&#116;o';
+				var path = 'hr' + 'ef' + '=';
+				var addy05797cb5d1a5685a9261922d00e392f5 = 'v&#105;n&#111;gr&#97;d&#111;v&#97;.&#105;l' + '&#64;';
+				addy05797cb5d1a5685a9261922d00e392f5 = addy05797cb5d1a5685a9261922d00e392f5 + '&#117;g&#97;t&#117;' + '&#46;' + 's&#117;';
+				var addy_text05797cb5d1a5685a9261922d00e392f5 = 'v&#105;n&#111;gr&#97;d&#111;v&#97;.&#105;l' + '&#64;' + '&#117;g&#97;t&#117;' + '&#46;' + 's&#117;';document.getElementById('cloak05797cb5d1a5685a9261922d00e392f5').innerHTML += '<a ' + path + '\'' + prefix + ':' + addy05797cb5d1a5685a9261922d00e392f5 + '\'>'+addy_text05797cb5d1a5685a9261922d00e392f5+'<\/a>';
+		</script><br />Н. Х. Садыков, аспирант кафедры «Вычислительная техника и инженерная кибернетика» УГНТУ, Уфа, Россия;<br />orcid.org/0009-0007-0882-3537, e-mail: <span id="cloake75ea28501bf99edde3f95959deca824">Этот адрес электронной почты защищён от спам-ботов. У вас должен быть включен JavaScript для просмотра.</span><script type='text/javascript'>
+				document.getElementById('cloake75ea28501bf99edde3f95959deca824').innerHTML = '';
+				var prefix = '&#109;a' + 'i&#108;' + '&#116;o';
+				var path = 'hr' + 'ef' + '=';
+				var addye75ea28501bf99edde3f95959deca824 = 's&#97;dyk&#111;v.n&#105;y&#97;z2016' + '&#64;';
+				addye75ea28501bf99edde3f95959deca824 = addye75ea28501bf99edde3f95959deca824 + 'y&#97;nd&#101;x' + '&#46;' + 'r&#117;';
+				var addy_texte75ea28501bf99edde3f95959deca824 = 's&#97;dyk&#111;v.n&#105;y&#97;z2016' + '&#64;' + 'y&#97;nd&#101;x' + '&#46;' + 'r&#117;';document.getElementById('cloake75ea28501bf99edde3f95959deca824').innerHTML += '<a ' + path + '\'' + prefix + ':' + addye75ea28501bf99edde3f95959deca824 + '\'>'+addy_texte75ea28501bf99edde3f95959deca824+'<\/a>';
+		</script></p>
+<p>Выполнена разработка метода распределённого мониторинга безопасности сигнальных сетей Diameter в сети LTE. Целью работы является повышение информационной безопасности находящихся в эксплуатации сетей LTE за счёт обнаружения атак на сигнализацию Diameter с использованием иерархической архитектуры «ведущий–ведомый» и интеллектуального анализа аномалий. Для достижения поставленной цели решены следующие задачи: обоснован выбор иерархической архитектуры мониторинга с двухуровневым извлечением признаков; разработаны каскадная и ансамблевая модели обнаружения; проведена экспериментальная оценка эффективности обнаружения пяти типов атак на Diameter. Причиной актуальности поставленной задачи является недостаточная защищённость в сетях LTE существующих механизмов (межсетевых экранов сигнализации), а так-же принципиальная неспособность централизованных подходов к мониторингу обнаруживать компрометацию внутренних узлов сети. Показано, что без сопоставления поведения узла с медианными значениями по его зоне компрометированный узел неотличим от нормального. Предложена двухуровневая система извлечения признаков – 35 наблюдаемых на уровне ведомых узлов и 21 признак управляющего блока с зональной контекстуализацией на уровне ведущих. На основе имитационной модели из 17 узлов (86 400 записей) мета ансамбль достигает F1 = 0,9934 при FPR = 0,0001; каскадный детектор обеспечивает 99,4 % обнаружения компрометации. Абляционное исследование подтвердило, что удаление признаков иерархической архитектуры снижает обнаружение компрометации с 98,5 % до 2,2 %. Сравнение контролируемых и неконтролируемых моделей по достоверности обнаружения компрометации не представляется корректным из-за использования в них принципиально разных алгоритмов с разными характеристиками входных данных.</p>
+<p><em><strong>Ключевые слова:&nbsp;</strong></em>протокол Diameter, LTE, обнаружение аномалий, отказ в обслуживании, ком-прометация узла, иерархическая архитектура, мета-ансамбль, межсетевой экран сигнализации.</p>
+<p>&nbsp;&nbsp;<a href="/images/archive/2026/96-1/1.2---1.pdf"><span class="icon-file pdf">&nbsp;</span>Скачать статью</a></p> 	</div>
+
+							<dl class="article-info muted">
+
+		
+			<dt class="article-info-term" style="display: none;">Подробности			</dt>
+
+			
+			
+			
+					
+					
+			
+							<dd class="hits"><span class="icon-eye-open"></span><meta itemprop="interactionCount" content="UserPageVisits:203" />Просмотров: 203</dd>						</dl>
+					
+									</div>
+</div></div><div class="clearfix"></div></div></div><div class="footer-height"></div></div><div class="copyright"><div class="page-width">Вестник Рязанского государственного радиотехнического университета &copy; 2016-2026, <span>Разработка: <a href="https://rsreu.ru/vuz/structure/cnit">ЦНИТ РГРТУ</a></span></div></div></body>	<!-- Yandex.Metrika counter -->
+		<script type="text/javascript">
+			(function (d, w, c) {
+				(w[c] = w[c] || []).push(function() {
+					try {
+						w.yaCounter42465714 = new Ya.Metrika({
+							id:42465714,
+							clickmap:true,
+							trackLinks:true,
+							accurateTrackBounce:true,
+							webvisor:true,
+							trackHash:true
+						});
+					} catch(e) { }
+				});
+
+				var n = d.getElementsByTagName("script")[0],
+					s = d.createElement("script"),
+					f = function () { n.parentNode.insertBefore(s, n); };
+				s.type = "text/javascript";
+				s.async = true;
+				s.src = "https://mc.yandex.ru/metrika/watch.js";
+
+				if (w.opera == "[object Opera]") {
+					d.addEventListener("DOMContentLoaded", f, false);
+				} else { f(); }
+			})(document, window, "yandex_metrika_callbacks");
+		</script>
+		<noscript><div><img src="https://mc.yandex.ru/watch/42465714" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+	<!-- /Yandex.Metrika counter --> </html>

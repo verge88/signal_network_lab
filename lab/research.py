@@ -125,20 +125,21 @@ def sweep(project, values, repetitions=3, progress=None, cancel=None):
     return storage.save('sweep',f'Нагрузка / {p.name}',dict(results=results,groups=groups,metadata=dict(repetitions=repetitions,values=values)))
 
 
-def train(dataset_id, algorithm='random_forest', seed=42, trees=120, contamination=.1, threshold_mode='validation', progress=None, cancel=None, feature_set=None, evaluation_mode='run', holdout_value=None):
+def train(dataset_id, algorithm='random_forest', seed=42, trees=120, contamination=.1, threshold_mode='validation', progress=None, cancel=None, feature_set=None, evaluation_mode='run', holdout_value=None,parameters=None):
     checkpoint(cancel)
-    if algorithm not in ('random_forest','logistic','isolation_forest'):raise ValueError('Неизвестный алгоритм')
-    if not 20<=trees<=300 or not 0<contamination<=.5 or not 0<=seed<=2147483647:raise ValueError('Некорректные параметры обучения')
-    if threshold_mode not in ('validation','contamination') or (threshold_mode=='contamination' and algorithm!='isolation_forest'):raise ValueError('Неподдерживаемый метод выбора порога')
+    ml.definition(algorithm)
     d=storage.get('dataset',dataset_id)
     if progress:progress(10)
     result=ml.train(d['rows'],algorithm,seed=seed,trees=trees,contamination=contamination,threshold_mode=threshold_mode,
-        feature_set=feature_set or d['metadata'].get('feature_set','legacy-v1'),evaluation_mode=evaluation_mode,holdout_value=holdout_value)
+        feature_set=feature_set or d['metadata'].get('feature_set','legacy-v1'),evaluation_mode=evaluation_mode,holdout_value=holdout_value,parameters=parameters)
     if cancel and cancel():
         # Remove only the artifact created by this cancelled training request.
         (ml.DATA/'models'/f'{result["model_id"]}.joblib').unlink(missing_ok=True)
         raise CancelledError('Обучение отменено')
-    record=storage.save('model',f'{algorithm} / {d["name"]}',dict(dataset_id=dataset_id,**result,metadata=dict(algorithm=algorithm,f1=result['metrics']['f1'],dataset=d['name'])),result['model_id'])
+    try:record=storage.save('model',f'{result["algorithm_title"]} / {d["name"]}',dict(dataset_id=dataset_id,**result,metadata=dict(algorithm=algorithm,f1=result['metrics']['f1'],dataset=d['name'])),result['model_id'])
+    except BaseException:
+        (ml.DATA/'models'/f'{result["model_id"]}.joblib').unlink(missing_ok=True)
+        raise
     if progress:progress(100)
     return record
 
