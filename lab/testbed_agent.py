@@ -176,11 +176,45 @@ def rewrite_config(document,name,profile,root):
     return doc
 
 
+def network_resources(profile):
+    """Observe the kernel instead of treating a durable manifest as a live network."""
+    n=names(profile);host,ran,gateway=addresses(profile)
+    namespaces=run(['ip','netns','list']).stdout
+    namespace=any(line.split()[0]==n['namespace'] for line in namespaces.splitlines() if line.split())
+    def interface(name,netns=None):
+        argv=['ip','-j','-d']+(['-n',netns] if netns else [])+['addr','show','dev',name]
+        result=run(argv,check=False)
+        if result.returncode:
+            if 'does not exist' in result.stderr or 'Cannot find device' in result.stderr:return None
+            raise ValueError('Не удалось проверить интерфейс '+name+': '+result.stderr[-500:])
+        values=json.loads(result.stdout)
+        return values[0] if values else None
+    host_if=interface(n['host_if']);upf_if=interface(n['upf_if'])
+    ran_if=interface(n['ran_if'],n['namespace']) if namespace else None
+    orphan=interface(n['ran_if']) if not namespace else None
+    def matches(item,kind,address,prefix):
+        return bool(item and item.get('linkinfo',{}).get('info_kind')==kind and 'UP' in item.get('flags',[]) and
+            any(a.get('local')==address and a.get('prefixlen')==prefix for a in item.get('addr_info',[])))
+    checks=dict(namespace=namespace,host=matches(host_if,'veth',host,30),ran=matches(ran_if,'veth',ran,30),
+        upf=matches(upf_if,'tun',gateway,ipaddress.ip_network(profile['ue_subnet']).prefixlen))
+    return dict(complete=all(checks.values()),absent=not any((namespace,host_if,upf_if,ran_if,orphan)),checks=checks)
+
+
 def prepare(profile,root,state):
     import yaml
     if any(owned(v) for v in state['processes'].values()):raise ValueError('Сначала остановите процессы этого стенда')
     if os.geteuid()!=0:raise ValueError('Подготовка изолированной сети требует root')
+    if len(profile['subscribers'])>ipaddress.ip_network(profile['ue_subnet']).num_addresses-3:raise ValueError('В подсети UE недостаточно адресов после резервирования шлюза')
+    network=network_resources(profile)
+    if state.get('resources') and network['absent']:
+        state.update(resources=False,prepared=False,processes={});state.pop('pfcp_pair',None);write(root/'state.json',state)
+    elif state.get('resources') and not network['complete']:
+        state['prepared']=False;write(root/'state.json',state)
+        raise ValueError('Сеть профиля неполная или её параметры изменены. Сначала очистите сеть, затем подготовьте заново.')
+    elif not state.get('resources') and not network['absent']:
+        raise ValueError('Имена сетевых ресурсов заняты вне подготовленного профиля')
     if state.get('resources') and (not state.get('prepared') or state.get('fingerprint')!=fingerprint(profile)):raise ValueError('Для изменённого или частично подготовленного профиля сначала очистите его сеть')
+    state['prepared']=False;write(root/'state.json',state)
     if not state.get('resources'):
         desired=[ipaddress.ip_network(profile[k]) for k in ('ran_subnet','ue_subnet')]
         routes=json.loads(run(['ip','-j','route','show']).stdout)
@@ -225,8 +259,9 @@ def prepare(profile,root,state):
         run(['ip','addr','add',host+'/30','dev',n['host_if']]);run(['ip','link','set',n['host_if'],'up'])
         for args in (['link','set','lo','up'],['addr','add',ran+'/30','dev',n['ran_if']],['link','set',n['ran_if'],'up']):run(['ip','-n',n['namespace'],*args])
         run(['ip','tuntap','add',n['upf_if'],'mode','tun']);run(['ip','addr','add',gateway+'/'+profile['ue_subnet'].split('/')[1],'dev',n['upf_if']]);run(['ip','link','set',n['upf_if'],'up'])
+    if not network_resources(profile)['complete']:raise ValueError('Сетевая подготовка не подтверждена. Проверьте ресурсы и очистите частичную сеть.')
     state.update(prepared=True,fingerprint=fingerprint(profile),files=sorted(configs));write(root/'state.json',state)
-    return dict(prepared=True,files=sorted(configs),workspace=str(root),isolation=n)
+    return dict(prepared=True,files=sorted(configs),workspace=str(root),isolation=n,resource_state='present')
 
 
 def require_prepared(profile,state):
@@ -282,7 +317,26 @@ def parse_ue(status,sessions):
     return dict(registered=registered if 'rm-state' in s or 'mm-state' in s else None,sessions=active,status=s)
 
 
+def other_operation_active(profile,proc_root=None):
+    """Also detect preparation still in preflight, before a workspace/lock exists."""
+    if proc_root is None and os.name=='nt':return False
+    proc_root=Path('/proc') if proc_root is None else proc_root
+    try:
+        for process in proc_root.iterdir():
+            if not process.name.isdigit() or int(process.name)==os.getpid():continue
+            try:
+                if process.stat().st_uid!=getattr(os,'geteuid',lambda:0)():continue
+                argv=(process/'cmdline').read_bytes().decode(errors='replace').split('\0')
+            except (FileNotFoundError,ProcessLookupError):continue
+            if '--signal-lab-profile' not in argv:continue
+            index=argv.index('--signal-lab-profile')
+            if len(argv)>index+2 and argv[index+1]==profile['id'] and argv[index+2] not in ('status','preflight'):return True
+        return False
+    except OSError:return None
+
+
 def snapshot(profile,root,state):
+    operation_before=other_operation_active(profile)
     results=[];deadline=time.monotonic()+40
     for sub in profile['subscribers']:
         key='ue-'+sub['imsi'];alive=key in state['processes'] and owned(state['processes'][key])
@@ -311,7 +365,13 @@ def snapshot(profile,root,state):
     runtime_version=None
     for key,text in logs.items():
         if key.startswith(('gnb','ue-')) and (m:=re.search(r'UERANSIM v([\d.]+)',text)):runtime_version=m[1];break
-    return redact(dict(source='open5gs-ueransim',clock='wall',observed_at=datetime.now(timezone.utc).isoformat(),prepared=state.get('prepared',False),
+    network=network_resources(profile)
+    processes_present=any(owned(entry) for entry in state['processes'].values())
+    operation_after=other_operation_active(profile)
+    other_operation=True if operation_before is True or operation_after is True else None if operation_before is None or operation_after is None else False
+    resource_state='unknown' if other_operation is not False else 'absent' if network['absent'] and not processes_present else 'present' if processes_present or (state.get('resources') and not network['absent']) else 'unknown'
+    return redact(dict(source='open5gs-ueransim',clock='wall',observed_at=datetime.now(timezone.utc).isoformat(),prepared=bool(state.get('prepared') and network['complete']),network=network,
+        resource_state=resource_state,processes_present=processes_present,other_operation=other_operation,
         profile_matches=state.get('fingerprint')==fingerprint(profile),core=core_ready(profile,state),
         gnb_alive=gnb_alive,gnb_connected=gnb_connected,ueransim_runtime_version=runtime_version,ues=results,logs=logs),profile)
 
@@ -410,15 +470,23 @@ def measurement(profile,root,state):
 def dispatch(request):
     p=request['profile'];action=request['action']
     if action=='preflight':return preflight(p)
+    if action=='prepare':
+        checks=preflight(p)
+        if not checks['ready']:raise ValueError('Среда не готова: '+', '.join(c['check'] for c in checks['checks'] if not c['ok']))
     root=workspace(p,create=action=='prepare')
     if not root.exists():
-        if action=='status':return dict(prepared=False,source='open5gs-ueransim',clock='wall')
+        if action in ('status','cleanup'):
+            result=snapshot(p,root,dict(processes={},resources=False,prepared=False))
+            if action=='status':return result
+            if result['resource_state']=='absent':return dict(result,cleaned=True)
+            raise ValueError('Не удалось подтвердить отсутствие ресурсов. Сеть без манифеста не удаляется.')
         raise ValueError('Сначала подготовьте профиль')
     import fcntl
     with (root/'.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);state=read_state(root)
         if action=='status':return snapshot(p,root,state)
-        if action=='stop':return stop(root,state)
+        if action=='stop':
+            result=stop(root,state);return dict(snapshot(p,root,state),**result)
         if action=='cleanup':
             if any(owned(v) for v in state['processes'].values()):raise ValueError('Сначала остановите процессы')
             if state.get('resources'):
@@ -427,13 +495,16 @@ def dispatch(request):
                 for key in ('host_if','upf_if'):run(['ip','link','del',n[key]],check=False)
                 remaining=run(['ip','netns','list'],check=False).stdout
                 if any(line.split()[0]==n['namespace'] for line in remaining.splitlines() if line.split()) or any(run(['ip','link','show',n[key]],check=False).returncode==0 for key in ('host_if','upf_if')):raise ValueError('Не все ресурсы удалены; проверьте права и повторите очистку')
-            state.update(resources=False,prepared=False);write(root/'state.json',state);return dict(cleaned=True)
+            if not network_resources(p)['absent']:raise ValueError('Не удалось подтвердить отсутствие всех сетевых ресурсов профиля')
+            state.update(resources=False,prepared=False);write(root/'state.json',state)
+            return dict(cleaned=True,resource_state='absent',processes_present=False,network=dict(absent=True,complete=False))
         if action=='prepare':
-            checks=preflight(p)
-            if not checks['ready']:raise ValueError('Среда не готова: '+', '.join(c['check'] for c in checks['checks'] if not c['ok']))
             return prepare(p,root,state)
         require_prepared(p,state)
-        if action=='provision':return provision(p)
+        if not network_resources(p)['complete']:
+            state['prepared']=False;write(root/'state.json',state)
+            raise ValueError('Сеть профиля отсутствует или неполная. Выполните подготовку сети заново; при частичной сети сначала очистите её.')
+        if action=='provision':return dict(provision(p),resource_state='present')
         if action=='start_core':
             offset=(root/'smf.log').stat().st_size if (root/'smf.log').exists() else 0
             for name in CORE:
@@ -474,11 +545,11 @@ def dispatch(request):
             else:
                 script="const p=JSON.parse(require('fs').readFileSync(0,'utf8'));const c=new Mongo('mongodb://127.0.0.1:27017').getDB(p.database).subscribers;print(c.deleteOne({imsi:p.imsi,_signal_lab:p.owner}).deletedCount);"
                 count=int(run(['mongosh','--quiet','--nodb','--eval',script],data=json.dumps(dict(database='signal_lab_'+p['id'],imsi=imsi,owner=p['id']))).stdout.strip())
-            return dict(removed=count,imsi=imsi)
+            return dict(removed=count,imsi=imsi,resource_state='present')
         raise ValueError('Неизвестная операция')
 
 
 def main(request):
-    try:result=dict(ok=True,result=dispatch(request))
+    try:result=dict(ok=True,result=dict(dispatch(request),profile_id=request['profile']['id']))
     except Exception as error:result=dict(ok=False,error=str(error)[:2000])
     print(json.dumps(redact(result,request['profile']),ensure_ascii=False),flush=True)

@@ -18,6 +18,10 @@ CONTRACT='testbed-v1'
 BOOTSTRAP="import json,sys; p=json.load(sys.stdin); ns={'__name__':'signal_lab_agent'}; exec(compile(p.pop('agent'),'signal_lab_agent','exec'),ns); ns['main'](p)"
 
 
+class AgentError(ValueError):
+    """An explicit failure response from Linux, distinct from an unknown RPC outcome."""
+
+
 class Subscriber(BaseModel):
     model_config=ConfigDict(extra='forbid')
     imsi:str=Field(default='999700000000001',pattern=r'^\d{15}$')
@@ -53,6 +57,8 @@ class Profile(BaseModel):
         if ran.version!=4 or ran.prefixlen!=30 or ue.version!=4 or not 16<=ue.prefixlen<=28 or ran.overlaps(ue) or not all(any(n.subnet_of(r) for r in private) for n in (ran,ue)):raise ValueError('Нужны непересекающиеся частные IPv4-сети: /30 для RAN и /16…/28 для UE')
         if any(not s.imsi.startswith(self.mcc+self.mnc) for s in self.subscribers):raise ValueError('IMSI должен начинаться с MCC/MNC стенда')
         if len({s.imsi for s in self.subscribers})!=len(self.subscribers):raise ValueError('IMSI должны быть уникальны')
+        available=ue.num_addresses-3  # Network, broadcast and the local UPF gateway are reserved.
+        if len(self.subscribers)>available:raise ValueError(f'Подсеть UE {ue} вмещает {available} абонентов после резервирования шлюза; указано {len(self.subscribers)}')
         return self
 
 
@@ -102,21 +108,26 @@ def request(profile,action,progress=None,cancel=None,**kwargs):
     if action not in allowed:raise ValueError('Неизвестная операция стенда')
     argv=['wsl.exe','--distribution',p.distro]
     if p.root:argv+=['--user','root']
-    argv+=['--exec','python3','-c',BOOTSTRAP]
+    argv+=['--exec','python3','-c',BOOTSTRAP,'--signal-lab-profile',p.id,action]
     payload=json.dumps(dict(agent=agent_source(),profile=p.model_dump(),action=action,**kwargs)).encode()
     if progress:progress(0)
     code,out,err=execute(argv,payload,timeout=180 if action=='measure' else 90,cancel=cancel)
     try:result=json.loads(out)
     except ValueError:raise ValueError((err or out or 'Linux не вернул отчёт JSON')[:2000])
-    if code or not result.get('ok'):raise ValueError(result.get('error') or err[:2000] or 'Ошибка стенда')
+    if not isinstance(result,dict):raise ValueError('Linux не вернул подтверждение операции')
+    if result.get('ok') is False:raise AgentError(result.get('error') or err[:2000] or 'Ошибка стенда')
+    if code or result.get('ok') is not True:raise ValueError(err[:2000] or 'Не удалось подтвердить завершение Linux-операции')
+    response=result['result']
+    if response.get('profile_id',p.id)!=p.id:raise ValueError('Ответ Linux относится к другому профилю стенда')
     if progress:progress(100)
-    return result['result']
+    return dict(response,profile_id=p.id)
 
 
 def measure(profile,progress=None,cancel=None):
     p=Profile.model_validate(profile.model_dump() if isinstance(profile,Profile) else profile)
     result=request(p,'measure',progress,cancel)
     if cancel and cancel():raise CancelledError()
-    return storage.save('testbed_run',p.name+' · измерение',dict(contract=CONTRACT,source='open5gs-ueransim',clock='wall',profile=public_profile(p),**result))
+    payload={**result,'contract':CONTRACT,'source':'open5gs-ueransim','clock':'wall','profile_id':p.id,'profile':public_profile(p)}
+    return storage.save('testbed_run',p.name+' · измерение',payload)
 
 

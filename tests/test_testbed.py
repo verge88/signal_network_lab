@@ -20,6 +20,12 @@ class TestbedTests(unittest.TestCase):
         other=testbed.Profile();self.assertNotEqual(self.profile.subscribers[0].key,other.subscribers[0].key)
         redacted=json.dumps(testbed.public_profile(self.profile));self.assertNotIn(self.profile.subscribers[0].key,redacted)
         self.assertNotIn(self.profile.subscribers[0].opc,redacted)
+    def test_ue_pool_reserves_network_broadcast_and_gateway(self):
+        subscribers=[dict(imsi='99970'+str(i).zfill(10),key='1'*32,opc='2'*32) for i in range(1,17)]
+        testbed.Profile(ue_subnet='10.84.0.0/28',subscribers=subscribers[:13])
+        for count in (14,16):
+            with self.subTest(count=count),self.assertRaisesRegex(ValueError,'13 абонентов'):testbed.Profile(ue_subnet='10.84.0.0/28',subscribers=subscribers[:count])
+        testbed.Profile(ue_subnet='10.84.0.0/27',subscribers=subscribers)
     def test_wsl_utf16_inventory_and_localized_state_parsing(self):
         sample='  NAME              STATE           VERSION\r\n* Ubuntu            Stopped         2\r\n  docker-desktop    Running         2\r\n'
         self.assertEqual(testbed.decode_output(sample.encode('utf-16-le')),sample)
@@ -31,11 +37,19 @@ class TestbedTests(unittest.TestCase):
             argv,payload=execute.call_args.args
             self.assertEqual(argv[:3],['wsl.exe','--distribution','Ubuntu'])
             self.assertNotIn(self.p['subscribers'][0]['key'],' '.join(argv))
+            self.assertEqual(argv[-3:],['--signal-lab-profile',self.profile.id,'preflight'])
             self.assertEqual(json.loads(payload)['profile'],self.p)
     def test_linux_error_and_unknown_action_do_not_look_like_success(self):
         with self.assertRaises(ValueError):testbed.request(self.profile,'reset_database')
         with patch.object(testbed,'execute',return_value=(0,'{"ok":false,"error":"Not ready"}','')):
             with self.assertRaisesRegex(ValueError,'Not ready'):testbed.request(self.profile,'prepare')
+    def test_rpc_rejects_a_response_for_another_profile(self):
+        with patch.object(testbed,'execute',return_value=(0,json.dumps(dict(ok=True,result=dict(profile_id='f'*12))),'')):
+            with self.assertRaisesRegex(ValueError,'другому профилю'):testbed.request(self.profile,'status')
+    def test_non_acknowledgement_json_is_an_unknown_rpc_outcome(self):
+        with patch.object(testbed,'execute',return_value=(0,'{"status":"busy"}','')):
+            with self.assertRaises(ValueError) as error:testbed.request(self.profile,'prepare')
+        self.assertNotIsInstance(error.exception,testbed.AgentError)
     def test_execute_cancels_without_shell(self):
         with self.assertRaises(CancelledError):testbed.execute([sys.executable,'-c','import time;time.sleep(5)'],cancel=lambda:True)
     def test_execute_bounds_wait(self):
@@ -88,10 +102,26 @@ class TestbedTests(unittest.TestCase):
         result=agent.procedure_events(line+'\n'+line+'\n[2026-10-22 12:00:00.100] [nas] [info] Initial Registration is successful')
         self.assertEqual(result['events'],[])
     def test_measurement_saved_as_real_time_source_without_keys(self):
-        with tempfile.TemporaryDirectory() as temp,patch.object(storage,'DATA',Path(temp)),patch.object(testbed,'request',return_value=dict(data_tests=[],procedure_samples=[])):
+        response=dict(source='open5gs-ueransim',clock='wall',profile_id=self.profile.id,data_tests=[],procedure_samples=[])
+        with tempfile.TemporaryDirectory() as temp,patch.object(storage,'DATA',Path(temp)),patch.object(testbed,'request',return_value=response):
             record=testbed.measure(self.profile)
             self.assertEqual(record['source'],'open5gs-ueransim');self.assertEqual(record['clock'],'wall')
             self.assertNotIn(self.p['subscribers'][0]['key'],json.dumps(record))
+            self.assertEqual(storage.get('testbed_run',record['id'])['profile_id'],self.profile.id)
+    def test_full_agent_measurement_survives_rpc_save_and_reopen(self):
+        snapshot=dict(source='open5gs-ueransim',clock='wall',observed_at='2026-10-23T00:00:00+00:00',prepared=True,profile_matches=True,
+            core=[dict(component='amf',alive=True,ready=True)],gnb_alive=True,gnb_connected=True,ueransim_runtime_version='3.3.0',
+            ues=[dict(imsi=self.p['subscribers'][0]['imsi'],alive=True,registered=True,sessions=[dict(address='10.84.0.2')])],logs={},network=dict(complete=True))
+        interfaces=[dict(ifname='uesimtun0',addr_info=[dict(local='10.84.0.2')])]
+        def run(argv,**kwargs):return Mock(returncode=0,stdout='time=1.2 ms\n5 packets transmitted, 5 received' if 'ping' in argv else json.dumps(interfaces))
+        with tempfile.TemporaryDirectory() as temp,patch.object(agent,'snapshot',return_value=snapshot),patch.object(agent,'run',side_effect=run),patch.object(agent,'preflight',return_value=dict(ready=True)):
+            payload=agent.measurement(self.p,Path(temp),dict(processes={}))
+            self.assertEqual(payload['source'],'open5gs-ueransim');self.assertIn('provenance',payload);self.assertIn('procedure_observations',payload)
+            envelope=json.dumps(dict(ok=True,result=dict(payload,profile_id=self.profile.id)))
+            with patch.object(storage,'DATA',Path(temp)),patch.object(testbed,'execute',return_value=(0,envelope,'')):
+                saved=testbed.measure(self.profile);loaded=storage.get('testbed_run',saved['id'])
+            for key,value in payload.items():self.assertEqual(loaded[key],value,key)
+            self.assertEqual(loaded['profile_id'],self.profile.id);self.assertEqual(loaded['data_tests'][0]['received'],5)
     def test_cancelled_measurement_does_not_create_history(self):
         with tempfile.TemporaryDirectory() as temp,patch.object(storage,'DATA',Path(temp)),patch.object(testbed,'request',return_value={}):
             with self.assertRaises(CancelledError):testbed.measure(self.profile,cancel=lambda:True)

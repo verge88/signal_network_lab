@@ -2,17 +2,18 @@
 import json
 from pathlib import Path
 import zipfile
+from concurrent.futures import CancelledError
 from PySide6.QtWidgets import (QDialog,QWidget,QVBoxLayout,QFormLayout,QTabWidget,QLineEdit,
     QCheckBox,QPlainTextEdit,QFileDialog,QScrollArea,QHeaderView)
 from lab import storage,testbed
 from lab.testbed import Profile,Subscriber
-from lab.testbed_agent import ue_configs,redact,names,addresses
+from lab.testbed_agent import ue_configs,redact,names,addresses,fingerprint
 from .widgets import label,button,row,combo,spin,table,populate,Chart
 
 
 class TestbedDialog(QDialog):
     def __init__(self,parent):
-        super().__init__(parent);self.owner=parent;self.settings=parent.settings;self.profile=Profile();self.report=None
+        super().__init__(parent);self.owner=parent;self.settings=parent.settings;self.profile=Profile();self.control_profile=None;self.pending_profile=None;self.report=None
         self.setWindowTitle('5G-стенд · Open5GS / UERANSIM');self.resize(1180,840)
         root=QVBoxLayout(self);self.notice=label('5G-стенд · реальные Linux-процессы и реальное время. Моделирование SignalLab запускается отдельно.','PanelTitle');self.notice.setWordWrap(True);root.addWidget(self.notice)
         self.history=combo([]);self.profile_name=QLineEdit(self.profile.name)
@@ -70,13 +71,22 @@ class TestbedDialog(QDialog):
         for control in self.compute_controls:control.setEnabled(not parent.active_job)
         self.set_profile(self.profile);self.refresh_history()
 
-    def set_profile(self,p):
-        self.profile=p;self.profile_name.setText(p.name);self.distro.setText(p.distro);self.use_root.setChecked(p.root)
+    def set_profile(self,p,control_profile=None,pending_profile=None):
+        self.profile=p;self.control_profile=control_profile;self.pending_profile=pending_profile;self.profile_name.setText(p.name);self.distro.setText(p.distro);self.use_root.setChecked(p.root)
         for key,control in self.paths.items():control.setText(getattr(p,key))
         for key,control in self.fields.items():control.setText(getattr(p,key))
         self.tac.setValue(p.tac);self.sst.setValue(p.sst);self.subscribers.setRowCount(0)
         for sub in p.subscribers:self.add_subscriber(sub)
-        self.render_plan()
+        self.render_plan();self.reset_diagnostics()
+        self.history.setCurrentIndex(self.history.findData(p.id))
+
+    def reset_diagnostics(self):
+        self.last_state=None;self.report=None;self.log_data={};self.suggestions=[];self.suggest_button.setEnabled(False)
+        for widget in (self.checks,self.core,self.ues,self.measurements,self.procedures):populate(widget,[])
+        self.log_choice.clear();self.logs.clear();self.chart.set_series([]);self.comparison.clear()
+        self.state_note.setText(f'Профиль: {self.profile.name} · ID {self.profile.id} · {self.profile.distro}. Среда ещё не опрошена.')
+        if self.pending_profile:self.state_note.setText(self.state_note.text()+' Результат предыдущей операции неизвестен. Нажмите «Обновить».')
+        self.diagnostics.setText('Проверьте среду выбранного профиля.');self.measure_note.setText('Измерения выбранного профиля ещё не открыты.')
 
     def values(self):
         subs=[dict(imsi=self.subscribers.cellWidget(i,0).text().strip(),key=self.subscribers.cellWidget(i,1).text().strip(),opc=self.subscribers.cellWidget(i,2).text().strip()) for i in range(self.subscribers.rowCount())]
@@ -101,22 +111,79 @@ class TestbedDialog(QDialog):
         self.preview.setPlainText(json.dumps(doc,ensure_ascii=False,indent=2))
     def new_profile(self):self.set_profile(Profile())
     def save_profile(self):
-        p=self.values();storage.save('testbed_profile',p.name,dict(profile=p.model_dump()),record_id=p.id);self.profile=p;self.refresh_history()
+        self.persist_profile(self.values())
+    def persist_profile(self,p,pending=False,operation_profile=None):
+        attempt=(operation_profile or p) if pending else self.pending_profile
+        storage.save('testbed_profile',p.name,dict(profile=p.model_dump(),control_profile=self.control_profile.model_dump() if self.control_profile else None,pending_profile=attempt.model_dump() if attempt else None),record_id=p.id)
+        self.profile=p;self.pending_profile=attempt;self.refresh_history()
+    def reconcile_profile(self,p,result):
+        if result.get('profile_id',p.id)!=p.id:return
+        state=result.get('resource_state')
+        if state not in ('absent','present'):return
+        if state=='absent' and (result.get('processes_present') is not False or result.get('network',{}).get('absent') is not True):return
+        try:saved=storage.get('testbed_profile',p.id)
+        except KeyError:saved=dict(name=p.name,profile=p.model_dump())
+        managed=p if state=='present' else None
+        storage.save('testbed_profile',saved['name'],dict(profile=saved['profile'],control_profile=managed.model_dump() if managed else None,pending_profile=None),record_id=p.id)
+        if self.profile.id==p.id:self.control_profile=managed;self.pending_profile=None
+        return state
     def refresh_history(self):
+        saved=self.saved.currentData();simulation=self.sim_runs.currentData()
         self.history.clear();self.saved.clear();self.sim_runs.clear()
         for p in storage.listing('testbed_profile'):self.history.addItem(p['name'],p['id'])
         for p in storage.listing('testbed_run'):self.saved.addItem(p['name'],p['id'])
         for p in storage.listing('run'):self.sim_runs.addItem(p['name'],p['id'])
+        self.history.setCurrentIndex(self.history.findData(self.profile.id))
+        if saved:self.saved.setCurrentIndex(self.saved.findData(saved))
+        if simulation:self.sim_runs.setCurrentIndex(self.sim_runs.findData(simulation))
     def load_profile(self):
         if not self.history.currentData():raise ValueError('Нет сохранённых профилей')
-        self.set_profile(Profile.model_validate(storage.get('testbed_profile',self.history.currentData())['profile']))
+        record=storage.get('testbed_profile',self.history.currentData());managed=record.get('control_profile');pending=record.get('pending_profile')
+        self.set_profile(Profile.model_validate(record['profile']),Profile.model_validate(managed) if managed else None,Profile.model_validate(pending) if pending else None)
     def scan(self):
         self.owner.start_job('Поиск WSL2-дистрибутивов',lambda progress,cancel:testbed.distributions(cancel),self.accept_distributions)
     def accept_distributions(self,rows):
         populate(self.checks,[[r['name'],'WSL '+str(r['version']),r['state']] for r in rows]);self.diagnostics.setText('Укажите имя дистрибутива WSL2 из списка. docker-desktop не является подготовленной средой стенда.')
     def action(self,action,**kwargs):
-        p=self.values();self.owner.start_job('5G-стенд · '+action,lambda progress,cancel:testbed.request(p,action,progress,cancel,**kwargs),self.accept_result)
-    def accept_result(self,result):
+        if self.owner.active_job:raise ValueError('Дождитесь завершения текущей операции')
+        anchor=self.pending_profile or self.control_profile
+        if self.pending_profile and action not in ('status','preflight'):raise ValueError('Результат предыдущей операции ещё не подтверждён. Сначала нажмите «Обновить», чтобы проверить состояние Linux.')
+        p=anchor if action in ('status','stop','cleanup') and anchor else self.values()
+        if action not in ('preflight','status','stop','cleanup'):
+            if self.control_profile and fingerprint(p.model_dump())!=fingerprint(self.control_profile.model_dump()):raise ValueError('Параметры подготовленного профиля изменены. Сначала остановите и очистите его сеть; эти действия используют сохранённую конфигурацию.')
+        if action not in ('preflight','status'):
+            settings=self.profile if action in ('stop','cleanup') and anchor else p
+            self.persist_profile(settings,pending=True,operation_profile=p)
+        self.owner.start_job('5G-стенд · '+action,lambda progress,cancel:self.operation(p,action,progress,cancel,**kwargs),lambda outcome:self.complete_operation(outcome,p,action),result_on_cancel=True)
+    @staticmethod
+    def operation(p,action,progress,cancel,**kwargs):
+        try:
+            result=testbed.measure(p,progress,cancel) if action=='measure' else testbed.request(p,action,progress,cancel,**kwargs)
+            return dict(ok=True,result=result)
+        except Exception as error:
+            status=None
+            if isinstance(error,testbed.AgentError) and action not in ('status','preflight'):
+                try:status=testbed.request(p,'status',cancel=cancel)
+                except Exception:pass
+            return dict(ok=False,error=str(error) or ('Операция отменена' if isinstance(error,CancelledError) else type(error).__name__),status=status)
+    def complete_operation(self,outcome,p,action):
+        evidence=outcome.get('result') if outcome['ok'] else outcome.get('status')
+        confirmed=self.reconcile_profile(p,evidence) if evidence else None
+        if evidence and action!='preflight' and not confirmed:evidence=dict(evidence,resource_state='unknown')
+        if outcome['ok']:
+            if action=='measure':self.accept_measurement(evidence,p.id)
+            else:self.accept_result(evidence,p.id,action,p)
+            return
+        unknown=not confirmed
+        message=outcome['error']+(' Состояние Linux не подтверждено. Нажмите «Обновить» перед повторной операцией.' if unknown else '')
+        if self.profile.id==p.id:
+            if evidence:self.accept_result(evidence,p.id,'status',p)
+            if unknown:self.state_note.setText(f'ID {p.id} · {p.distro}: состояние Linux не подтверждено. Нажмите «Обновить».')
+        self.owner.error(message)
+    def accept_result(self,result,profile_id=None,action=None,request_profile=None):
+        bound_id=profile_id or result.get('profile_id',self.profile.id)
+        if result.get('profile_id',bound_id)!=bound_id:return
+        if bound_id!=self.profile.id:return
         if 'checks' in result:
             populate(self.checks,[[r['check'],'Готово' if r['ok'] else 'Не готово',r['detail']] for r in result['checks']])
             paths=', '.join(result.get('suggested_ran_bins',[]));self.diagnostics.setText(('Среда готова.' if result['ready'] else 'Исправьте отмеченные пункты.')+(' Найден UERANSIM: '+paths if paths else '')+' Ядро: '+result.get('kernel',''))
@@ -132,9 +199,12 @@ class TestbedDialog(QDialog):
             if result.get('cleaned'):state='Изолированная сеть этого профиля удалена'
             if result.get('files'):state='Подготовлены конфигурации и изолированная сеть'
             if result.get('subscribers'):state='Тестовые профили абонентов записаны'
+            if result.get('resource_state')=='absent':state+=' · сеть и процессы отсутствуют; настройки можно менять'
+            if result.get('resource_state')=='unknown':state+=' · наличие управляемых ресурсов не подтверждено; требуется проверка Linux'
             if 'gnb_alive' in result:state+=' · gNB: '+('работает' if result['gnb_alive'] else 'не запущен')
             if 'gnb_connected' in result:state+=' · NGAP: '+('подключён' if result['gnb_connected'] else 'не подключён' if result['gnb_connected'] is False else 'не подтверждён')
-            self.state_note.setText('Open5GS/UERANSIM · реальное время · '+state);self.tabs.setCurrentIndex(3)
+            bound=request_profile or self.control_profile or self.profile
+            self.state_note.setText(f'{bound.name} · ID {bound.id} · {bound.distro} · '+state);self.tabs.setCurrentIndex(3)
     def show_log(self,*args):self.logs.setPlainText(getattr(self,'log_data',{}).get(self.log_choice.currentData(),''))
     def use_suggestion(self):
         if getattr(self,'suggestions',[]):self.paths['ran_bin'].setText(self.suggestions[0])
@@ -143,13 +213,20 @@ class TestbedDialog(QDialog):
         if i<0:raise ValueError('Выберите абонента')
         self.action('remove_subscriber',imsi=self.subscribers.cellWidget(i,0).text())
     def measure(self):
-        p=self.values();self.owner.start_job('5G-стенд · измерение пользовательского обмена',lambda progress,cancel:testbed.measure(p,progress,cancel),self.accept_measurement)
-    def accept_measurement(self,record):
+        if self.owner.active_job:raise ValueError('Дождитесь завершения текущей операции')
+        if self.pending_profile:raise ValueError('Сначала нажмите «Обновить», чтобы проверить результат предыдущей Linux-операции')
+        p=self.values()
+        if self.control_profile and fingerprint(p.model_dump())!=fingerprint(self.control_profile.model_dump()):raise ValueError('Для измерений восстановите параметры подготовленного профиля')
+        self.persist_profile(p,pending=True)
+        self.owner.start_job('5G-стенд · измерение пользовательского обмена',lambda progress,cancel:self.operation(p,'measure',progress,cancel),lambda outcome:self.complete_operation(outcome,p,'measure'),result_on_cancel=True)
+    def accept_measurement(self,record,profile_id=None):
+        if profile_id and (profile_id!=self.profile.id or record.get('profile_id',profile_id)!=profile_id):return
         self.report=record;fmt=lambda v:'—' if v is None else f'{v:.4g}'
         populate(self.measurements,[[r['imsi'],r.get('interface','—'),r.get('target','—'),str(r.get('sent','—'))+' / '+str(r.get('received','—')),fmt(r.get('rtt_mean_ms')),fmt(r.get('rtt_p95_ms')),r.get('error','Завершено' if r.get('exit_code')==0 else 'Ошибка / потери')] for r in record.get('data_tests',[])])
         self.chart.set_series([dict(name=r['imsi'],points=[(i+1,v) for i,v in enumerate(r.get('rtt_samples_ms',[]))]) for r in record.get('data_tests',[])[:8]])
         populate(self.procedures,[[group['imsi'],event['procedure'],event['start'],event['end'],event['status'],event['latency_ms']] for group in record.get('procedure_observations',[]) for event in group['events']])
-        self.measure_note.setText('Источник: '+record.get('source','не указан')+' · '+record.get('measurement_boundary','')+' · нет измерений' if not record.get('data_tests') else 'ICMP через UE TUN до локального шлюза UPF. Полные пробы и условия сохранены в отчёте.')
+        report_profile=record.get('profile',{});identity=record.get('profile_id',report_profile.get('id','не указан'))
+        self.measure_note.setText(f'Источник: {record.get("source","не указан")} · профиль {report_profile.get("name","")} · ID {identity}. ICMP через UE TUN до локального UPF; NAS отдельно.')
         self.refresh_history();self.tabs.setCurrentIndex(4)
     def open_measurement(self):
         if not self.saved.currentData():raise ValueError('Нет сохранённых измерений')

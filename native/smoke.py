@@ -172,7 +172,22 @@ class SmokeTest(QObject):
             def synchronous(title,fn,done,*args,**kwargs):done(fn(lambda value:None,lambda:False))
             with patch.object(w,'start_job',side_effect=synchronous),patch.object(testbed,'request',return_value=checks) as rpc:
                 dialog.action('preflight');assert rpc.call_args.args[1]=='preflight' and dialog.checks.rowCount()==1
+            absent=dict(profile_id=p.id,prepared=False,resource_state='absent',processes_present=False,network=dict(absent=True,complete=False))
+            with patch.object(w,'start_job',side_effect=synchronous),patch.object(w,'error') as errors:
+                with patch.object(testbed,'request',side_effect=[testbed.AgentError('Not prepared'),absent]):dialog.measure()
+                assert errors.call_count==1 and dialog.control_profile is None and dialog.pending_profile is None
+                with patch.object(testbed,'request',return_value=dict(profile_id=p.id,prepared=True,resource_state='present')):dialog.action('prepare')
+                assert dialog.control_profile.id==p.id and dialog.pending_profile is None
+                with patch.object(testbed,'request',return_value=dict(absent,cleaned=True)):dialog.action('cleanup')
+                with patch.object(testbed,'request',side_effect=TimeoutError('Unknown outcome')):dialog.action('prepare')
+                assert dialog.control_profile is None and dialog.pending_profile.id==p.id
+                with patch.object(testbed,'request',return_value=absent):dialog.action('status')
+                assert dialog.control_profile is None and dialog.pending_profile is None
             dialog.accept_result(fixture);assert dialog.ues.rowCount()==1
+            with patch.object(testbed,'request',return_value=dict(fixture,profile_id=p.id,data_tests=[],procedure_observations=[])):
+                saved=testbed.measure(p);reopened=storage.get('testbed_run',saved['id'])
+                assert reopened['source']=='open5gs-ueransim' and reopened['clock']=='wall' and reopened['profile_id']==p.id
+                assert reopened['profile']['subscribers'][0]['key']=='[скрыто]'
             record=storage.save('testbed_run','Interface fixture',dict(**fixture,data_tests=[dict(imsi=p.subscribers[0].imsi,interface='uesimtun0',target='10.45.0.1',sent=2,received=2,exit_code=0,rtt_samples_ms=[1.,2.],rtt_mean_ms=1.5,rtt_p95_ms=2.)],procedure_observations=[dict(imsi=p.subscribers[0].imsi,events=[dict(procedure='registration',start='fixture-start',end='fixture-end',latency_ms=10,status='success')])]))
             dialog.accept_measurement(record);assert dialog.measurements.rowCount()==1 and dialog.procedures.rowCount()==1
             for name in ('monochrome','light_monochrome','dark','graphite','porcelain'):
@@ -180,7 +195,7 @@ class SmokeTest(QObject):
                 for tab in range(dialog.tabs.count()):
                     dialog.tabs.setCurrentIndex(tab);self.app.processEvents()
                     if self.output:assert dialog.grab().save(str(self.output/f'{name}-testbed-{tab}.png'))
-            self.completed.append('5G testbed native controller: WSL profile/credentials masking, packaged Linux worker, seven tabs in five themes, RPC without live mutations, NAS/ICMP views and provenance-separated history')
+            self.completed.append('5G testbed native controller: failed-first-operation recovery, timeout intent reconciled by status, credentials masking, packaged Linux worker, seven tabs in five themes, complete agent response saved/reopened, RPC without live mutations, NAS/ICMP views and separate history')
         finally:
             for control in dialog.compute_controls:
                 if control in w.compute_buttons:w.compute_buttons.remove(control)
