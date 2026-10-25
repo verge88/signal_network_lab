@@ -1,0 +1,46 @@
+name: SS7 offline reproducibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/ss7-reproducible-20261025
+    paths:
+      - 'scripts/ss7_experiment.py'
+      - 'tests/test_ss7_experiment.py'
+      - '.github/workflows/ss7-experiment.yml'
+      - 'lab/**'
+  pull_request:
+    paths:
+      - 'scripts/ss7_experiment.py'
+      - 'tests/test_ss7_experiment.py'
+      - '.github/workflows/ss7-experiment.yml'
+      - 'lab/**'
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install test requirements
+        run: |
+          python -m pip install -r requirements.txt scipy
+      - name: Validate experiment
+        run: python -m unittest discover -s tests -p 'test_ss7_experiment.py' -v
+      - name: Repeat SS7 simulation
+        run: python -m scripts.ss7_experiment --repetitions 6 --output artifacts/ss7-results.json
+      - name: Save reproducibility artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ss7-offline-results
+          path: artifacts/ss7-results.json
+          if-no-files-found: warn
