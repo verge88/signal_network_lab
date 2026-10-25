@@ -20,6 +20,7 @@ from .graph import NetworkView
 from .node_icons import node_kind_combo,refresh_kind_icons
 from .jobs import Job
 from .ml_options import ModelOptions
+from . import preferences as app_preferences
 from .dialogs import node_editor,link_editor,flow_editor,incident_editor,KINDS,INCIDENTS
 
 NAMES=dict(INCIDENTS)
@@ -53,7 +54,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__();self.setWindowTitle('Signal Lab Desktop[*]');self.setWindowIcon(icon('pulse','#8fe0c2',32));self.setMinimumSize(1080,700);self.resize(1480,930)
         self.settings=QSettings('SignalLab','SignalLabDesktop')
-        self.overview_height=max(OVERVIEW_MIN_HEIGHT,min(480,self.settings.value('overviewHeight',OVERVIEW_MIN_HEIGHT,type=int)))
+        self.preferences=app_preferences.load(self.settings);self._applying_preferences=False
+        self.overview_height=self.preferences['overviewHeight']
         self.theme=saved_theme(self.settings);set_theme(self.theme)
         self.project=preset().model_dump();self.run_record=None;self.dataset_record=None;self.model_record=None;self.sweep_record=None;self.calibration_record=None
         self.selected=('node','stp-a');self.path=None;self.active_job=None;self.started=0;self.compute_buttons=[];self.records={};self.loaded_runs=[];self.model_metrics=None
@@ -63,15 +65,15 @@ class MainWindow(QMainWindow):
         self.undo=QUndoStack(self);self.undo.cleanChanged.connect(self.document_clean_changed)
         QApplication.instance().setPalette(application_palette());QApplication.instance().setStyleSheet(stylesheet())
         self.create_shell();self.create_menus();self.install_export_actions();self.load_workspace();self.refresh_library();self.install_project(self.project);self.refresh_results();self.refresh_ml()
-        self.apply_theme(self.theme,persist=False)
-        self.set_sidebar_collapsed(self.settings.value('sidebarCollapsed',False,type=bool),persist=False)
-        geometry=self.settings.value('geometry')
+        self.apply_preferences(self.preferences,persist=False)
+        geometry=self.settings.value('geometry') if self.preferences['preferences/rememberWindow'] else None
         if geometry:self.restoreGeometry(geometry)
-        sizes=self.settings.value('topologySplitter')
+        sizes=self.settings.value('topologySplitter') if self.preferences['preferences/rememberWindow'] else None
         if sizes:self.topology_split.setSizes([int(v) for v in sizes])
         self.timer=QTimer(self);self.timer.timeout.connect(self.tick);self.timer.start(500)
         self.statusBar().showMessage('Готово. Вычисления выполняются локально. F5 — запустить эксперимент.')
         self.undo.setClean();self.setWindowModified(False)
+        self.job_completed.connect(self.notify_job_completed);self.show_page(self.preferences['preferences/startPage'])
         QTimer.singleShot(150,self.graph.fit)
         QTimer.singleShot(0,self.apply_overview_height)
 
@@ -113,7 +115,7 @@ class MainWindow(QMainWindow):
         gap(24,16);section('  РАБОЧЕЕ ПРОСТРАНСТВО');gap(5,0)
         for text,fn,ico in [('Открыть проект',self.open_project,'folder'),('Сохранить проект',self.save_project,'save')]:
             b=self.action_button(text,fn,ico);b.setObjectName('Nav');sidebar_button(b,text)
-        sl.addStretch();about=self.action_button('О модели лаборатории',self.about,'settings');about.setObjectName('Nav');sidebar_button(about,'О модели лаборатории')
+        sl.addStretch();settings_button=button('  Настройки',None,'settings');settings_button.setObjectName('Nav');settings_button.setCheckable(True);settings_button.clicked.connect(lambda:self.show_page(7));sidebar_button(settings_button,'Настройки');self.nav_buttons.append(settings_button)
         offline=label('●  OFFLINE ENGINE   /   v2.11','Muted');offline.setStyleSheet('font-size:9px;color:#668f85;padding-top:14px');sl.addWidget(offline);self.sidebar_details.append(offline)
         root.addWidget(side)
         right=QWidget();self.workspace_right=right;rl=QVBoxLayout(right);rl.setContentsMargins(0,0,0,0);rl.setSpacing(0);root.addWidget(right,1)
@@ -134,6 +136,8 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.topology_page());self.pages.addWidget(self.experiments_page());self.pages.addWidget(self.telemetry_page());self.pages.addWidget(self.ml_page());self.pages.addWidget(self.results_page());self.pages.addWidget(self.help_page())
         from .attacks import AttacksPage
         self.attacks_widget=AttacksPage(self);attacks_scroll=QScrollArea();attacks_scroll.setWidgetResizable(True);attacks_scroll.setWidget(self.attacks_widget);self.pages.addWidget(attacks_scroll)
+        from .settings_page import SettingsPage
+        self.settings_page=SettingsPage(self);self.pages.addWidget(self.settings_page)
         self.job_bar=QFrame();self.job_bar.setObjectName('Toolbar');jl=QHBoxLayout(self.job_bar);jl.setContentsMargins(15,8,15,8);self.job_label=label('');jl.addWidget(self.job_label)
         self.progress=QProgressBar();self.progress.setRange(0,100);self.progress.setFixedWidth(240);self.progress.setTextVisible(False);jl.addWidget(self.progress);self.elapsed=label('0 с','Muted');jl.addWidget(self.elapsed)
         self.cancel_button=self.action_button('Отменить',self.cancel_job,'stop');jl.addWidget(self.cancel_button);self.job_bar.hide();bl.addWidget(self.job_bar)
@@ -147,6 +151,7 @@ class MainWindow(QMainWindow):
         self.menu_action(file,'Выход',self.close,'Ctrl+Q')
         undo_action=self.undo.createUndoAction(self,'Отменить');undo_action.setShortcut(QKeySequence.StandardKey.Undo);edit.addAction(undo_action)
         redo_action=self.undo.createRedoAction(self,'Повторить');redo_action.setShortcut(QKeySequence.StandardKey.Redo);edit.addAction(redo_action)
+        self.menu_action(edit,'Настройки программы…',lambda:self.show_page(7),'Ctrl+,')
         edit.addSeparator();self.menu_action(edit,'Добавить узел',self.add_node,'Ctrl+Shift+N');self.menu_action(edit,'Добавить канал',self.add_link,'Ctrl+L');self.menu_action(edit,'Удалить выбранный объект',self.delete_selected)
         self.draw_link_action=QAction('Создать канал мышью',self);self.draw_link_action.setCheckable(True);self.draw_link_action.setShortcut('Ctrl+Shift+L');self.draw_link_action.toggled.connect(self.toggle_link_drawing);self.graph.connection_mode_changed.connect(self.draw_link_action.setChecked);edit.addAction(self.draw_link_action)
         self.menu_action(view,'Вся топология',self.graph.fit,'Ctrl+0');self.menu_action(view,'Сбросить расположение',self.auto_layout)
@@ -155,7 +160,7 @@ class MainWindow(QMainWindow):
         self.overview_action=self.menu_action(view,'Высота верхнего блока…',self.configure_overview_height)
         self.menu_action(view,'Компактный верхний блок',lambda:self.set_overview_height(OVERVIEW_MIN_HEIGHT))
         self.topology_metrics_action=QAction('Показатели на топологии',self);self.topology_metrics_action.setCheckable(True)
-        self.topology_metrics_action.toggled.connect(lambda checked:self.update_metrics_visibility());view.addAction(self.topology_metrics_action)
+        self.topology_metrics_action.toggled.connect(self.set_topology_metrics);view.addAction(self.topology_metrics_action)
         theme_menu=view.addMenu('Тема');theme_group=QActionGroup(self);theme_group.setExclusive(True);self.theme_actions={}
         for theme_name,title in THEMES.items():
             action=QAction(title,self);action.setCheckable(True);action.setChecked(self.theme==theme_name)
@@ -254,6 +259,32 @@ class MainWindow(QMainWindow):
         for chart in self.findChildren(Chart):chart.update()
         for key,action in self.theme_actions.items():action.setChecked(key==name)
         if persist:self.settings.setValue('theme',name);self.settings.sync();self.statusBar().showMessage('Тема: '+THEMES[name],6000)
+        self.preferences['theme']=name;self.sync_settings_page()
+    def sync_settings_page(self):
+        if not self._applying_preferences and hasattr(self,'settings_page'):self.settings_page.refresh()
+    def apply_preferences(self,values,persist=True):
+        checked={key:app_preferences.validate(key,value) for key,value in values.items()}
+        if persist:app_preferences.save(self.settings,checked)
+        self.preferences.update(checked);self._applying_preferences=True
+        try:
+            if 'theme' in checked:self.apply_theme(checked['theme'],persist=False)
+            if 'sidebarCollapsed' in checked:self.set_sidebar_collapsed(checked['sidebarCollapsed'],persist=False)
+            if 'overviewHeight' in checked:self.set_overview_height(checked['overviewHeight'],persist=False)
+            if 'topologyMetrics' in checked:self.set_topology_metrics(checked['topologyMetrics'],persist=False)
+            if 'preferences/statusBar' in checked:self.statusBar().setVisible(checked['preferences/statusBar'])
+            if any(key.startswith('graph/') for key in checked):
+                self.graph.configure_view(grid=self.preferences['graph/grid'],link_labels=self.preferences['graph/linkLabels'],pan_speed=self.preferences['graph/panSpeed'],zoom_factor=self.preferences['graph/zoomFactor'])
+        finally:self._applying_preferences=False
+        self.sync_settings_page()
+        if persist:self.settings_page.feedback.setText('Настройки сохранены.')
+    def set_topology_metrics(self,visible,persist=True):
+        visible=bool(visible);self.topology_metrics_action.blockSignals(True);self.topology_metrics_action.setChecked(visible);self.topology_metrics_action.blockSignals(False)
+        self.preferences['topologyMetrics']=visible;self.update_metrics_visibility()
+        if persist:self.settings.setValue('topologyMetrics',visible);self.settings.sync()
+        self.sync_settings_page()
+    @Slot(object)
+    def notify_job_completed(self,result):
+        if self.preferences['preferences/beepOnSuccess'] and not (isinstance(result,dict) and result.get('ok') is False):QApplication.beep()
     def export_sources(self):
         sources=[]
         charts=[('rate_chart','Монитор · сигнальный трафик','Время, s','msg/s'),('telemetry_chart','Телеметрия · '+FEATURE_NAMES.get(self.telemetry_metric.currentData(),''),'Время, s',FEATURE_NAMES.get(self.telemetry_metric.currentData(),'')),('roc_chart','ROC-кривая','False Positive Rate','True Positive Rate'),('pr_chart','Precision–Recall','Recall','Precision')]
@@ -298,6 +329,7 @@ class MainWindow(QMainWindow):
         self.sidebar_toggle.setToolTip(title+' (Ctrl+B)');self.sidebar_toggle.setAccessibleName(title)
         self.sidebar_action.blockSignals(True);self.sidebar_action.setChecked(collapsed);self.sidebar_action.setText(title);self.sidebar_action.blockSignals(False)
         if persist:self.settings.setValue('sidebarCollapsed',collapsed);self.settings.sync()
+        self.preferences['sidebarCollapsed']=collapsed;self.sync_settings_page()
     def update_metrics_visibility(self):
         index=self.pages.currentIndex()
         self.metric_widget.setVisible(index==2 or (index==0 and self.topology_metrics_action.isChecked()))
@@ -318,6 +350,7 @@ class MainWindow(QMainWindow):
     def set_overview_height(self,height,persist=True):
         self.overview_height=max(OVERVIEW_MIN_HEIGHT,min(480,int(height)));self.apply_overview_height()
         if persist:self.settings.setValue('overviewHeight',self.overview_height);self.settings.sync()
+        self.preferences['overviewHeight']=self.overview_height;self.sync_settings_page()
     def overview_resized(self,position,index):
         if not self.metric_widget.isHidden():self.set_overview_height(self.workspace_split.sizes()[0])
     def configure_overview_height(self):
@@ -499,10 +532,13 @@ class MainWindow(QMainWindow):
         if self.topology_expanded and index!=0:self.set_topology_expanded(False)
         self.pages.setCurrentIndex(index)
         for i,b in enumerate(self.nav_buttons):b.setChecked(i==index)
-        titles=['Топология сети','Конструктор экспериментов','Телеметрия сети','Мастерская детекторов','Результаты исследований','Справка и руководство','Конструктор атак']
+        titles=['Топология сети','Конструктор экспериментов','Телеметрия сети','Мастерская детекторов','Результаты исследований','Справка и руководство','Конструктор атак','Настройки программы']
+        self.run_button.setVisible(index!=7)
         self.title.setText(titles[index]);self.update_metrics_visibility()
-        if index==0:QTimer.singleShot(0,self.graph.fit)
+        if index==0 and self.preferences['preferences/fitOnTopology']:QTimer.singleShot(0,self.graph.fit)
+        if index==7:self.sync_settings_page()
     def load_workspace(self):
+        if not self.preferences['preferences/restoreWorkspace']:return
         draft=storage.DATA/'desktop-workspace.json'
         if draft.exists():
             try:self.project=Project.model_validate_json(draft.read_text(encoding='utf-8')).model_dump()
@@ -960,7 +996,7 @@ class MainWindow(QMainWindow):
     def shortcuts(self):
         QMessageBox.information(self,'Горячие клавиши','Ctrl+N — новый проект\nCtrl+O — открыть\nCtrl+S — сохранить\nCtrl+Shift+S — сохранить как\nCtrl+Z / Ctrl+Y — отменить / повторить\nCtrl+Shift+N — добавить узел\nCtrl+L — добавить канал\nCtrl+Shift+L — соединить узлы мышью\nCtrl+Shift+T — экспорт схемы топологии\nF1 — справка и руководство\nF11 — развернуть / свернуть карту\nF5 — запустить эксперимент\nEscape — отменить соединение / свернуть карту / отменить вычисление\nF / Ctrl+0 — вся карта\nКолесо — прокрутка карты\nShift + колесо — по горизонтали\nCtrl + колесо — масштаб\nЗажатое колесо или Пробел + мышь — панорама\nDelete на карте — удалить выбранное (Ctrl+Z для восстановления)')
     def about(self):
-        QMessageBox.information(self,'Signal Lab Desktop 2.19.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
+        QMessageBox.information(self,'Signal Lab Desktop 2.20.0','Нативная лаборатория SS7 / SIGTRAN / Diameter / 5G SA.\nQt Widgets, локальные вычисления и ML.\n\nРегистрация и PDU-сессии, вложенные RPC, NGAP/SBI/PFCP и проверочные пакеты N3/N6 через UPF и DN.\n\nУправляющие сообщения используют очереди и каналы. У каждого узла своё представление доступности с распространением обновлений.\n\nКалибровка: параметры узлов и каналов, границы, несколько проходов и seed, независимая проверка и интервалы ошибки.\n\nПоведенческая офлайн-модель выбранных механизмов. Полные стеки 3GPP/RFC, радиоканал и криптография не реализованы. Совпадение с оборудованием требует измерений.\n\nДанные: '+str(storage.DATA))
     def closeEvent(self,event):
         if self.active_job:
             dialog=getattr(self,'long_run_dialog',None)
@@ -970,6 +1006,9 @@ class MainWindow(QMainWindow):
             self.error('Сначала отмените вычисление и дождитесь его завершения. Для обучения отмена проверяется после завершения fit().');event.ignore();return
         if not self.may_replace():event.ignore();return
         if self.topology_expanded:self.set_topology_expanded(False)
-        try:self.save_workspace();self.settings.setValue('geometry',self.saveGeometry());self.settings.setValue('topologySplitter',self.topology_split.sizes())
+        try:
+            self.save_workspace()
+            if self.preferences['preferences/rememberWindow']:self.settings.setValue('geometry',self.saveGeometry());self.settings.setValue('topologySplitter',self.topology_split.sizes())
+            self.settings.sync()
         except Exception as e:self.error(str(e));event.ignore();return
         event.accept()

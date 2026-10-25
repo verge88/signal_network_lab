@@ -52,7 +52,7 @@ class SmokeTest(QObject):
                 w.apply_theme(name);w.set_sidebar_collapsed(False,persist=False);w.set_overview_height(125,persist=False)
                 assert saved_theme(QSettings(settings_path,QSettings.Format.IniFormat))==name
                 self.capture_node_icons(name)
-                for page,title in enumerate(('topology','experiments','telemetry','ml','results','help','attacks')):
+                for page,title in enumerate(('topology','experiments','telemetry','ml','results','help','attacks','settings')):
                     w.show_page(page);self.app.processEvents()
                     if name in ('monochrome','light_monochrome'):
                         background='#ffffff' if name=='light_monochrome' else '#000000'
@@ -116,8 +116,8 @@ class SmokeTest(QObject):
                 w.set_overview_height(125);w.topology_metrics_action.setChecked(False);w.show_page(0);self.app.processEvents()
             assert json.dumps(w.project,sort_keys=True)==project
             assert w.selected==selection and w.undo.count()==undo_count
-            self.completed.append('pure-black and light monochrome themes, neutral rendering on all seven pages including the handbook and attack designer and saved theme')
-            self.completed.append('Graphite and Porcelain: all seven pages, colored topology, saved theme, 22 exact palette swatches and native theme application')
+            self.completed.append('pure-black and light monochrome themes, neutral rendering on all eight pages including settings, handbook and attack designer and saved theme')
+            self.completed.append('Graphite and Porcelain: all eight pages, colored topology, saved theme, 22 exact palette swatches and native theme application')
             self.completed.append('collapsible sidebar, icon navigation, tooltips, menu toggle and persisted state across all themes')
             self.completed.append('compact overview, real mouse resizing, numeric height dialog, saved height and page-switch restoration across all themes')
         finally:
@@ -126,6 +126,7 @@ class SmokeTest(QObject):
         try:
             w=self.window
             self.verify_startup()
+            self.verify_settings()
             import gc
             assert not gc.isenabled() and self.app.gui_collector.collect()
             self.completed.append('Python cyclic collection is scheduled on the GUI thread; automatic collection in simulation workers is disabled')
@@ -155,6 +156,31 @@ class SmokeTest(QObject):
             w.job_completed.connect(self.next_stage)
             w.start_run()
         except Exception:self.fail(traceback.format_exc())
+    def verify_settings(self):
+        from . import preferences
+        w=self.window;previous=(w.settings,dict(w.preferences),w.pages.currentIndex(),w.settings_page.tabs.currentIndex())
+        project=json.dumps(w.project,sort_keys=True);history=w.undo.count();w.settings=QSettings(str(storage.DATA/'preferences-self-test.ini'),QSettings.Format.IniFormat)
+        try:
+            w.apply_preferences(preferences.defaults(),persist=False);w.settings.setValue('calibration/options','keep');w.settings.setValue('export/style','keep-style')
+            w.nav_buttons[7].click();assert w.pages.currentIndex()==7 and w.run_button.isHidden()
+            page=w.settings_page;page.fields['sidebarCollapsed'].setChecked(True);assert w.sidebar_collapsed
+            page.fields['graph/grid'].setChecked(False);page.fields['graph/linkLabels'].setChecked(False)
+            assert not w.graph.show_grid and all(not edge.show_label for edge in w.graph.edge_items.values())
+            page.fields['graph/panSpeed'].setValue(2.);assert w.graph.pan_speed==2.
+            page.fields['preferences/startPage'].setCurrentIndex(7);assert preferences.load(w.settings)['preferences/startPage']==7
+            w.set_sidebar_collapsed(False);assert not page.fields['sidebarCollapsed'].isChecked()
+            for theme in ('graphite','porcelain','monochrome','light_monochrome','dark'):
+                page.fields['theme'].setCurrentIndex(page.fields['theme'].findData(theme));assert w.theme==theme
+                for index,title in enumerate(('appearance','topology','behavior','data')):
+                    page.tabs.setCurrentIndex(index);self.app.processEvents()
+                    if self.output:page.grab().save(str(self.output/f'{theme}-settings-{title}.png'))
+            page.reset();assert preferences.load(w.settings)==preferences.defaults()
+            assert w.settings.value('calibration/options')=='keep' and w.settings.value('export/style')=='keep-style'
+            assert json.dumps(w.project,sort_keys=True)==project and w.undo.count()==history
+            w.show_help('Настройки программы');assert 'Ctrl+,' in w.help_widget.reader.toPlainText()
+            self.completed.append('native settings: eight-page navigation, immediate persistent preferences, existing menus synchronized, configurable map navigation/display, safe defaults preserving research and all five themes')
+        finally:
+            settings,values,page,tab=previous;w.settings=settings;w.apply_preferences(values,persist=False);w.settings_page.tabs.setCurrentIndex(tab);w.show_page(page)
     def verify_testbed(self):
         from .testbed_dialog import TestbedDialog
         from lab import testbed

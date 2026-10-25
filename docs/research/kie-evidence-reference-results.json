@@ -1,0 +1,61 @@
+{
+  "scope": "finite mathematical reference; no real 5G traffic",
+  "python": "3.14.0",
+  "exhaustive_success_count_claims": 2048,
+  "honest_full_vector_checks": 512,
+  "false_rejections_of_honest_vectors": 0,
+  "correctly_rejected_scalar_claims": 768,
+  "false_scalar_claims_left_ambiguous": 768,
+  "full_visibility_false_claims_rejected": 192,
+  "central_vs_hierarchy_checks": 512,
+  "minimum_certificate_vs_bruteforce_checks": 1280,
+  "naive_zero_fill_honest_false_rejections": 169,
+  "dependence_preservation_counterexample": {
+    "exact": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "independent_intervals": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ]
+    ]
+  },
+  "authenticated_lie_detected": true,
+  "empty_evidence_set_separated_from_report_fault": true,
+  "missing_distinguished_from_observed_failure": true,
+  "stream_identity_includes_connection_epoch": true,
+  "data_mining_demo": {
+    "status": "illustration_only",
+    "sklearn": "1.8.0",
+    "numpy": "2.3.5",
+    "seed": 20261025,
+    "calibration_ranks": {
+      "amf": 0.007751937984496124,
+      "smf": 1.0
+    },
+    "query_order": [
+      "smf",
+      "amf"
+    ]
+  }
+}

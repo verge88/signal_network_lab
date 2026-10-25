@@ -53,7 +53,7 @@ class NodeItem(QGraphicsObject):
 
 class EdgeItem(QGraphicsPathItem):
     def __init__(self,link,a,b):
-        super().__init__();self.link=link;self.a=a;self.b=b;self.count=None
+        super().__init__();self.link=link;self.a=a;self.b=b;self.count=None;self.show_label=True
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable);self.setZValue(0)
         a.edges.append(self);b.edges.append(self);self.adjust();self.setToolTip(f'{link["protocol"]} · {link["latency_ms"]:g} ms · {link["bandwidth_mbps"]:g} Mbps')
     def adjust(self):
@@ -69,6 +69,7 @@ class EdgeItem(QGraphicsPathItem):
         if current_theme() in ('monochrome','light_monochrome') and self.link['enabled']:
             line_style={'SS7':Qt.PenStyle.DashLine,'M3UA':Qt.PenStyle.SolidLine,'Diameter':Qt.PenStyle.DotLine,'NGAP':Qt.PenStyle.DashDotLine,'SBI':Qt.PenStyle.SolidLine,'PFCP':Qt.PenStyle.DashDotDotLine,'GTPU':Qt.PenStyle.DashLine,'IP':Qt.PenStyle.DotLine}[self.link['protocol']]
         p.setPen(QPen(QColor('#c6f4e3') if self.isSelected() else color,2.5 if self.isSelected() else 1.5,line_style));p.drawPath(self.path())
+        if not self.show_label:return
         mid=(self.a.pos()+self.b.pos())/2
         p.setBrush(QColor('#18222f'));p.setPen(QPen(QColor('#344659'),.8));p.drawRoundedRect(QRectF(mid.x()-28,mid.y()-11,56,22),5,5)
         p.setPen(QColor('#9eb2cc'));p.setFont(QFont('Segoe UI',8));p.drawText(QRectF(mid.x()-27,mid.y()-11,54,22),Qt.AlignmentFlag.AlignCenter,f'{self.link["latency_ms"]:g} ms')
@@ -94,6 +95,7 @@ class NetworkView(QGraphicsView):
         self.setMouseTracking(True);self.viewport().setMouseTracking(True)
         self.scene_model.selectionChanged.connect(self.selection)
         self.first_fit=True;self.fit_mode=True;self.pan_position=None;self.pan_button=None
+        self.show_grid=True;self.show_link_labels=True;self.pan_speed=1.;self.zoom_factor=1.15
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     def set_project(self,p,selected=None,stats=None):
@@ -103,7 +105,7 @@ class NetworkView(QGraphicsView):
         for n in p['nodes']:
             item=NodeItem(n);item.moved.connect(self.node_moved);item.stats=(stats or {}).get('nodes',{}).get(n['id']);self.scene_model.addItem(item);self.node_items[n['id']]=item
         for l in p['links']:
-            item=EdgeItem(l,self.node_items[l['source']],self.node_items[l['target']]);self.scene_model.addItem(item);self.edge_items[l['id']]=item
+            item=EdgeItem(l,self.node_items[l['source']],self.node_items[l['target']]);item.show_label=self.show_link_labels;self.scene_model.addItem(item);self.edge_items[l['id']]=item
         bounds=self.scene_model.itemsBoundingRect().adjusted(-80,-80,80,80)
         self.scene_model.setSceneRect(bounds)
         self.setSceneRect(self.sceneRect().united(bounds))
@@ -115,6 +117,10 @@ class NetworkView(QGraphicsView):
         if self.first_fit:self.fit();self.first_fit=False
     def refresh_theme(self):
         self.setBackgroundBrush(QColor('#141c27'));self.scene_model.update();self.viewport().update()
+    def configure_view(self,grid=True,link_labels=True,pan_speed=1.,zoom_factor=1.15):
+        self.show_grid=bool(grid);self.show_link_labels=bool(link_labels);self.pan_speed=float(pan_speed);self.zoom_factor=float(zoom_factor)
+        for item in self.edge_items.values():item.show_label=self.show_link_labels;item.update()
+        self.viewport().update()
     @Slot()
     def selection(self):
         if self.loading or not isValid(self) or not isValid(self.scene_model):return
@@ -147,7 +153,7 @@ class NetworkView(QGraphicsView):
             steps=event.angleDelta().y()/120 if event.angleDelta().y() else event.pixelDelta().y()/120
             if steps:
                 self.fit_mode=False;point=event.position().toPoint();before=self.mapToScene(point);scale=self.transform().m11()
-                zoom=max(.015,min(3.5,scale*1.15**max(-50,min(50,steps))))
+                zoom=max(.015,min(3.5,scale*self.zoom_factor**max(-50,min(50,steps))))
                 anchor=self.transformationAnchor();self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
                 self.scale(zoom/scale,zoom/scale)
                 self.center_view(self.mapToScene(self.viewport().rect().center())+before-self.mapToScene(point))
@@ -156,7 +162,7 @@ class NetworkView(QGraphicsView):
             delta=QPointF(event.pixelDelta())
             if delta.isNull():delta=QPointF(event.angleDelta())*(60/120)
             if event.modifiers() & Qt.KeyboardModifier.ShiftModifier and not delta.x():delta=QPointF(delta.y(),0)
-            self.pan_view(delta)
+            self.pan_view(delta*self.pan_speed)
         if self.connection_source:self.update_connection(event.position().toPoint())
         event.accept()
     def node_at(self,point):
@@ -252,7 +258,9 @@ class NetworkView(QGraphicsView):
         if event.key()==Qt.Key.Key_Space:self.panning=False;self.setDragMode(QGraphicsView.DragMode.RubberBandDrag);event.accept()
         else:super().keyReleaseEvent(event)
     def drawBackground(self,p,rect):
-        p.fillRect(rect,QColor('#141c27'));p.setPen(QPen(QColor('#243245'),1))
+        p.fillRect(rect,QColor('#141c27'))
+        if not self.show_grid:return
+        p.setPen(QPen(QColor('#243245'),1))
         scale=max(.001,abs(p.worldTransform().m11()))
         step=25*max(1,math.ceil(8/(25*scale)));left=int(rect.left()/step)*step;top=int(rect.top()/step)*step
         for x in range(left,int(rect.right())+step,step):
